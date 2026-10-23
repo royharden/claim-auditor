@@ -1,0 +1,8 @@
+[project]
+name = "ledger-dev-fixture"
+version = "0.4.0"
+requires-python = ">=3.11"
+dependencies = ["rich>=13"]
+
+[project.scripts]
+ledger-note = "ledger:main"

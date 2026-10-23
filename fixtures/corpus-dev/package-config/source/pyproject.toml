@@ -1,0 +1,11 @@
+[project]
+name = "exporter-dev-fixture"
+version = "0.2.1"
+requires-python = ">=3.11"
+dependencies = ["orjson>=3.9"]
+
+[project.optional-dependencies]
+speed = ["msgpack>=1"]
+
+[tool.exporter]
+format = "text"

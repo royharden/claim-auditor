@@ -1,0 +1,48 @@
+{
+  "family_id": "dev-plugin-dispatch",
+  "designation": "DEV_ONLY",
+  "status": "Original review prompts; not extracted claims or gold",
+  "review_focus": "Dynamic lookup must prevent an unsupported closed-world absence claim.",
+  "assertions": [
+    {
+      "author_ordinal": 0,
+      "readme_quote": "The file `dispatch.py` exists.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 1,
+      "readme_quote": "The function `resolve` is declared in module `dispatch`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 2,
+      "readme_quote": "The function `publish` is not declared in module `dispatch`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 3,
+      "readme_quote": "The function `unregister` is declared in module `registry`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 4,
+      "readme_quote": "The config key `DEFAULT_PLUGIN` equals `\"disk\"` in `dispatch.py`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 5,
+      "readme_quote": "The config key `DEFAULT_PLUGIN` equals `\"network\"` in `dispatch.py`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 6,
+      "readme_quote": "The function `publish` is declared in module `dispatch` when the selected plugin supplies it.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 7,
+      "readme_quote": "The dispatcher retries failed deliveries reliably.",
+      "review_required": true
+    }
+  ]
+}

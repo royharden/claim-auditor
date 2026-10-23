@@ -1,0 +1,38 @@
+{
+  "format": "corpus-dev-provenance/1",
+  "family_id": "dev-sensor-class",
+  "designation": "DEV_ONLY",
+  "author_type": "agent",
+  "author_id": "0012_Codex_gpt-61-sol_D7",
+  "author_session": "01a16a95-430e-7d92-966e-e2ca8e221991",
+  "authored_on": "2026-10-23",
+  "origin": "Original source composed for claim-auditor DEV pilot; no external source acquisition.",
+  "rights_basis": "Original agent-authored project material; no third-party copied code; not a legal or independent rights-review receipt.",
+  "ancestry": {
+    "parent_family": null,
+    "mutation_of": null,
+    "structure": "class-members-and-dynamic-module-export",
+    "shared_elements": "Explicit README claim grammar only; all six authored by the same agent."
+  },
+  "source_root": "source",
+  "source_inventory": [
+    {
+      "path": "README.md",
+      "sha256": "a2d664741851c7be100ef1a84c443229f591811c23700436413f676af1b1f9d0",
+      "size": 495
+    },
+    {
+      "path": "sensor.py",
+      "sha256": "e0cd4a319d759f2cfcfdd55994268c8c11649b185722799d635073899278534f",
+      "size": 401
+    }
+  ],
+  "inventory_digest_method": "sha256(sorted compact JSON source_inventory, ensure_ascii default)",
+  "source_inventory_digest": "fb47863aaeddddc7520a50993b8d8122830e6defdd9eb54159f9b2b05ee63c57",
+  "authored_assertion_count": 8,
+  "extraction_status": "NOT_RUN",
+  "label_status": "UNLABELED_AGENT_PROPOSALS",
+  "human_review_status": "NOT_PERFORMED",
+  "heldout": false,
+  "custody_status": "No custody or blindness claim; exposed development source."
+}

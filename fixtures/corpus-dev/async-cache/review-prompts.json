@@ -1,0 +1,53 @@
+{
+  "family_id": "dev-async-cache",
+  "designation": "DEV_ONLY",
+  "status": "Original review prompts; not extracted claims or gold",
+  "review_focus": "A literal default or explicit raise does not establish delivery guarantees.",
+  "assertions": [
+    {
+      "author_ordinal": 0,
+      "readme_quote": "The function `fetch` is declared with `async def` in module `cache`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 1,
+      "readme_quote": "The function `fetch` has literal default `ttl=15` in module `cache`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 2,
+      "readme_quote": "The function `fetch` has literal default `ttl=150` in module `cache`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 3,
+      "readme_quote": "The function `fetch` contains an explicit `raise ValueError` statement in module `cache`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 4,
+      "readme_quote": "The function `invalidate` is declared in module `cache`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 5,
+      "readme_quote": "The environment variable `CACHE_REGION` is referenced.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 6,
+      "readme_quote": "The environment variable `CACHE_SECRET` is not referenced.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 7,
+      "readme_quote": "The cache supports exactly once delivery.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 8,
+      "readme_quote": "The function `fetch` is declared in module `cache` if caching is enabled.",
+      "review_required": true
+    }
+  ]
+}

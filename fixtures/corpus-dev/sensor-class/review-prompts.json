@@ -1,0 +1,48 @@
+{
+  "family_id": "dev-sensor-class",
+  "designation": "DEV_ONLY",
+  "status": "Original review prompts; not extracted claims or gold",
+  "review_focus": "Distinguish missing class member from unknown dynamic module export.",
+  "assertions": [
+    {
+      "author_ordinal": 0,
+      "readme_quote": "The class `Sensor` is declared in module `sensor`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 1,
+      "readme_quote": "The method `Sensor.read` is declared in module `sensor`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 2,
+      "readme_quote": "The method `Sensor.calibrate` is declared in module `sensor`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 3,
+      "readme_quote": "The constant `SAMPLE_LIMIT` equals `8` in module `sensor`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 4,
+      "readme_quote": "The constant `SAMPLE_LIMIT` equals `80` in module `sensor`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 5,
+      "readme_quote": "The file `calibration.json` does not exist.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 6,
+      "readme_quote": "The function `factory` is declared in module `sensor` when a plugin is installed.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 7,
+      "readme_quote": "The sensor returns accurate measurements in production.",
+      "review_required": true
+    }
+  ]
+}

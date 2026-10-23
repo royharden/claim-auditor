@@ -1,0 +1,53 @@
+{
+  "family_id": "dev-package-config",
+  "designation": "DEV_ONLY",
+  "status": "Original review prompts; not extracted claims or gold",
+  "review_focus": "Separate local declarations, imports, metadata and effective installed behavior.",
+  "assertions": [
+    {
+      "author_ordinal": 0,
+      "readme_quote": "The file `exporter/__init__.py` exists.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 1,
+      "readme_quote": "The function `encode` is declared in module `exporter.codec`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 2,
+      "readme_quote": "The function `decode` is declared in module `exporter.codec`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 3,
+      "readme_quote": "The dependency `orjson` is declared.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 4,
+      "readme_quote": "The dependency `httpx` is not declared.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 5,
+      "readme_quote": "The project requires-python is `>=3.11`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 6,
+      "readme_quote": "The project version is `9.0.0`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 7,
+      "readme_quote": "The file `exporter/fast.py` exists if an optional wheel is installed.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 8,
+      "readme_quote": "The exporter is safe for untrusted documents.",
+      "review_required": true
+    }
+  ]
+}

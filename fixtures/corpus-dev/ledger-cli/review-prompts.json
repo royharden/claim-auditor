@@ -1,0 +1,53 @@
+{
+  "family_id": "dev-ledger-cli",
+  "designation": "DEV_ONLY",
+  "status": "Original review prompts; not extracted claims or gold",
+  "review_focus": "Inspect declared CLI target separately from whether command execution works.",
+  "assertions": [
+    {
+      "author_ordinal": 0,
+      "readme_quote": "The file `ledger.py` exists.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 1,
+      "readme_quote": "The function `main` is declared in module `ledger`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 2,
+      "readme_quote": "The CLI entry `ledger-note` maps to `ledger:main`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 3,
+      "readme_quote": "The dependency `rich` is declared.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 4,
+      "readme_quote": "The project version is `0.4.0`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 5,
+      "readme_quote": "The config key `project.version` equals `\"0.5.0\"` in `pyproject.toml`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 6,
+      "readme_quote": "The environment variable `LEDGER_TOKEN` is not referenced.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 7,
+      "readme_quote": "The function `purge` is declared in module `ledger`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 8,
+      "readme_quote": "The CLI works on every operating system.",
+      "review_required": true
+    }
+  ]
+}

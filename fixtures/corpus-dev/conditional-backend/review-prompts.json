@@ -1,0 +1,53 @@
+{
+  "family_id": "dev-conditional-backend",
+  "designation": "DEV_ONLY",
+  "status": "Original review prompts; not extracted claims or gold",
+  "review_focus": "Conditional declarations do not prove the selected runtime backend or uptime.",
+  "assertions": [
+    {
+      "author_ordinal": 0,
+      "readme_quote": "The file `backend.py` exists.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 1,
+      "readme_quote": "The function `connect` is declared in module `backend`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 2,
+      "readme_quote": "The function `rollback` is declared in module `backend`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 3,
+      "readme_quote": "The environment variable `BACKEND_MODE` is referenced.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 4,
+      "readme_quote": "The config key `CONNECT_TIMEOUT` equals `3` in `backend.py`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 5,
+      "readme_quote": "The config key `CONNECT_TIMEOUT` equals `30` in `backend.py`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 6,
+      "readme_quote": "The file `secrets.json` does not exist.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 7,
+      "readme_quote": "The function `connect` is declared in module `backend` if remote mode is enabled.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 8,
+      "readme_quote": "The backend has 99.99 percent uptime in production.",
+      "review_required": true
+    }
+  ]
+}
