@@ -10,6 +10,7 @@ from claim_auditor.contracts import (
 )
 from claim_auditor.index import INDEX_VERSION, PARSER_VERSION, StaticIndex, build_index, resolve
 from claim_auditor.patterns import PATTERN_VERSION
+from claim_auditor.provenance import context_bytes, validate_manifest_context, validate_report_context
 from claim_auditor.inventory.raw import RawDocument
 from claim_auditor.snapshot import load_snapshot, read_source
 from claim_auditor.snapshot.safeio import read_ordinary, validated_path
@@ -93,7 +94,7 @@ def verify_report(run_root: Path) -> RunManifest:
             raise AuditError("run_not_complete", manifest.state, code)
         if manifest.completed_at is None or manifest.errors:
             raise AuditError("invalid_completed_run", manifest.run_id, 4)
-        required = {"report.json", "inventory.json", "claims.jsonl", "findings.jsonl", "evidence.jsonl", "coverage.jsonl", "predictions.jsonl", "report.md", "report.html"}
+        required = {"report.json", "inventory.json", "claims.jsonl", "findings.jsonl", "evidence.jsonl", "coverage.jsonl", "predictions.jsonl", "report.md", "report.html", "context.json", "context.jsonl"}
         if not required.issubset(manifest.report_hashes):
             raise AuditError("missing_report_artifact", ",".join(sorted(required - set(manifest.report_hashes))), 4)
         for name, digest in manifest.report_hashes.items():
@@ -108,6 +109,7 @@ def verify_report(run_root: Path) -> RunManifest:
         report = AuditReport.model_validate_json(read_ordinary(root, "report.json", 64 * 1024 * 1024))
         if report.snapshot != snapshot or manifest.snapshot_id != snapshot.snapshot_id or manifest.snapshot_manifest_digest != snapshot.manifest_digest:
             raise AuditError("report_snapshot_identity", manifest.run_id, 4)
+        validate_manifest_context(manifest, report, read_ordinary(root, "context.json", 128 * 1024))
         if report.mode != manifest.mode or report.errors or report.inventory.errors or not report.inventory.complete:
             raise AuditError("report_completion_identity", manifest.run_id, 4)
         if report.inventory.snapshot_id != snapshot.snapshot_id:
@@ -170,6 +172,19 @@ def verify_report(run_root: Path) -> RunManifest:
 
 
 def _verify_duplicate_artifacts(root: Path, report: AuditReport) -> None:
+    # This is the same report integrity service, not a parallel context verifier.
+    # Re-render only inert text from the bound pre-render context. Final RUN.json
+    # is never renderer input, so artifact hash closure remains acyclic.
+    from claim_auditor.report import render_html, render_markdown
+
+    metadata = context_bytes(validate_report_context(report))
+    for name in ("context.json", "context.jsonl"):
+        if read_ordinary(root, name, 128 * 1024) != metadata:
+            raise AuditError("report_context_artifact_mismatch", name, 4)
+    for name, raw in (("report.md", render_markdown(report).encode("utf-8")),
+                      ("report.html", render_html(report).encode("utf-8"))):
+        if read_ordinary(root, name, 64 * 1024 * 1024) != raw:
+            raise AuditError("report_render_context_mismatch", name, 4)
     expected = {
         "claims.jsonl": report.inventory.claims,
         "findings.jsonl": report.findings,

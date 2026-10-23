@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import html
+import os
 import re
 from collections import Counter
 from pathlib import Path
 
 from claim_auditor.contracts import AuditError, AuditReport, PredictionRow, canonical_json, sha256
 from claim_auditor.inventory.raw import safe_display
+from claim_auditor.provenance import context_bytes, validate_report_context
 from claim_auditor.report.demo import create_demo_source
 
 
@@ -20,16 +22,38 @@ def _fenced(text: str) -> str:
 
 
 def _summary(report: AuditReport) -> list[tuple[str, str]]:
+    context = validate_report_context(report)
+    def identity(value: object) -> str:
+        return canonical_json(value).decode("utf-8")
+
     counts = Counter(finding.verdict for finding in report.findings)
     return [
+        ("Run ID", context.run_id),
+        ("Run started", context.started_at),
+        ("Pre-render context ID", context.context_id),
+        ("Context version", context.context_version),
         ("Mode", report.mode),
         ("Snapshot", report.snapshot.snapshot_id),
         ("Source kind", report.snapshot.source_kind),
-        ("Commit", report.snapshot.commit or "not a Git snapshot"),
+        ("Target commit", report.snapshot.commit or "not a Git snapshot"),
         ("Tree identity", report.snapshot.tree_identity),
         ("Manifest digest", report.snapshot.manifest_digest),
         ("Schema", report.schema_version),
         ("Policy", report.policy_version),
+        ("Tool release label (not Git proof)", context.tool_version),
+        ("Observed trusted tool code", identity(context.tool_code)),
+        ("Python identity", identity(context.python_version)),
+        ("Python implementation", identity(context.python_implementation)),
+        ("Dependency observations", identity(context.dependencies)),
+        ("Provider identity", identity(context.provider)),
+        ("Model identity", identity(context.model)),
+        ("Prompt identity", identity(context.prompt_digest)),
+        ("Packet identity", identity(context.packet_digest)),
+        ("Tool revision declaration", identity(context.tool_revision)),
+        ("Workflow revision declaration", identity(context.workflow_revision)),
+        ("Workflow run reference (inert declaration)", identity(context.workflow_run_url)),
+        ("Trigger revision declaration", identity(context.trigger_revision)),
+        ("Trigger kind declaration", identity(context.trigger_kind)),
         ("Extraction", report.inventory.extraction_version),
         ("Inventory complete", str(report.inventory.complete).lower()),
         ("Snapshot complete", str(report.snapshot.complete).lower()),
@@ -41,7 +65,7 @@ def _summary(report: AuditReport) -> list[tuple[str, str]]:
         ("Runtime validation", "unverified"),
         ("Human-adjudicated evaluation", "not measured"),
         ("Comparative acceptance", "incomplete"),
-        ("GitHub Action", "not yet run"),
+        ("Workflow execution", "not observed by this offline auditor; declared references are not execution proof"),
     ]
 
 
@@ -99,7 +123,7 @@ def render_html(report: AuditReport) -> str:
         '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; base-uri \'none\'; form-action \'none\'">',
         "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">",
         "<title>Claim Auditor report</title><style>body{font:16px system-ui,sans-serif;margin:2rem auto;padding:0 1rem;max-width:72rem;color:#18212b;background:#f8fafc}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#eef2f6;padding:1rem;border-radius:.4rem}article{border-top:1px solid #ccd4dd;padding:1rem 0}dt{font-weight:700}dd{margin-bottom:.6rem;overflow-wrap:anywhere}.notice{padding:1rem;background:#fff3cd}table{border-collapse:collapse}th,td{padding:.4rem;text-align:left;border:1px solid #ccd4dd}</style></head><body>",
-        "<h1>Claim Auditor report</h1><p class=\"notice\">Scoped static evidence only. Runtime validation unverified. Human/live comparison not measured. Action not yet run.</p><dl>",
+        "<h1>Claim Auditor report</h1><p class=\"notice\">Scoped static evidence only. Runtime validation unverified. Human/live comparison not measured. Workflow execution not observed; declared references are not execution proof.</p><dl>",
     ]
     for key, value in _summary(report):
         parts.append(f"<dt>{escaped(key)}</dt><dd>{escaped(value)}</dd>")
@@ -135,10 +159,14 @@ def render_html(report: AuditReport) -> str:
 
 def write_reports(report: AuditReport, out: Path) -> dict[str, str]:
     """Write fixed-name new artifacts; D1 publishes RUN.json only after hashes."""
+    context = validate_report_context(report)
+    metadata = context_bytes(context)
     if out.is_symlink():
         raise AuditError("unsafe_output", "report output must be an ordinary directory")
     out.mkdir(parents=True, exist_ok=True)
     artifacts = {
+        "context.json": metadata,
+        "context.jsonl": metadata,
         "report.json": canonical_json(report) + b"\n",
         "inventory.json": canonical_json(report.inventory) + b"\n",
         "claims.jsonl": b"".join(canonical_json(row) + b"\n" for row in report.inventory.claims),
@@ -154,6 +182,8 @@ def write_reports(report: AuditReport, out: Path) -> dict[str, str]:
         try:
             with (out / name).open("xb") as handle:
                 handle.write(raw)
+                handle.flush()
+                os.fsync(handle.fileno())
         except FileExistsError as exc:
             raise AuditError("output_exists", f"refusing to overwrite {name}") from exc
         hashes[name] = sha256(raw)

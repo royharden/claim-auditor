@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib.metadata
 import os
 import time
 import uuid
@@ -13,9 +12,10 @@ from pydantic import ValidationError
 
 from ..contracts import (
     Attempt, AuditError, AuditReport, Evidence, Inventory, Limits, PipelineError,
-    POLICY_VERSION, PredicateResult, RunManifest, TOOL_VERSION, canonical_json,
+    POLICY_VERSION, PredicateResult, RunDeclarations, RunManifest, TOOL_VERSION, canonical_json, sha256,
 )
 from ..providers import load_replay, require_no_live
+from ..provenance import capture_run_context, context_bytes, guard_tool_paths, legacy_dependencies
 from .policy import decide_finding
 
 
@@ -30,16 +30,6 @@ def _publish_manifest(root: Path, manifest: RunManifest) -> None:
         stream.flush()
         os.fsync(stream.fileno())
     os.replace(temp, root / "RUN.json")
-
-
-def _dependency_versions() -> dict[str, str]:
-    versions = {}
-    for distribution in ("pydantic", "markdown-it-py"):
-        try:
-            versions[distribution] = importlib.metadata.version(distribution)
-        except importlib.metadata.PackageNotFoundError:
-            versions[distribution] = "unavailable"
-    return versions
 
 
 def _replay_inventory(
@@ -76,6 +66,7 @@ def audit_snapshot(
     replay_path: Path | None = None,
     prompt_digest: str | None = None,
     model: str | None = None,
+    declarations: RunDeclarations | None = None,
 ) -> RunManifest:
     from ..citations import validate_evidence, validate_span
     from ..index import build_index, resolve
@@ -97,20 +88,29 @@ def audit_snapshot(
     prospective = destination.resolve()
     if prospective == source_root or source_root in prospective.parents:
         raise AuditError("output_inside_snapshot", "Run output must be separate from the frozen snapshot.")
+    guard_tool_paths(source_root, destination)
     snapshot = load_snapshot(source_root)
+    limits = Limits()
+    started_clock = time.monotonic()
+    run_id, started_at = uuid.uuid4().hex, _now()
+    context, provenance_errors = capture_run_context(
+        run_id=run_id, started_at=started_at, snapshot=snapshot, mode=mode,
+        provider="fixture-replay" if mode == "replay" else None, model=model,
+        prompt_digest=prompt_digest, packet_digest=None, declarations=declarations,
+    )
     try:
         destination.mkdir(parents=True, exist_ok=False)
     except FileExistsError as exc:
         raise AuditError("output_exists", "A run requires a fresh output directory.") from exc
-    limits = Limits()
-    started_clock = time.monotonic()
     manifest = RunManifest(
-        run_id=uuid.uuid4().hex, tool_version=TOOL_VERSION, dependencies=_dependency_versions(),
+        run_id=run_id, tool_version=TOOL_VERSION, dependencies=legacy_dependencies(context),
         snapshot_id=snapshot.snapshot_id, snapshot_manifest_digest=snapshot.manifest_digest,
         mode=mode, provider="fixture-replay" if mode == "replay" else None, model=model,
-        prompt_digest=prompt_digest, packet_digest=None, started_at=_now(), completed_at=None,
-        state="created", limits=limits, attempts=[], errors=[], report_hashes={},
-        source_revision=None, workflow_revision=None, workflow_run_url=None,
+        prompt_digest=prompt_digest, packet_digest=None, started_at=started_at, completed_at=None,
+        state="created", limits=limits, attempts=[], errors=list(provenance_errors), report_hashes={},
+        source_revision=context.tool_revision.value, workflow_revision=context.workflow_revision.value,
+        workflow_run_url=context.workflow_run_url.value, run_context=context,
+        context_digest=sha256(context_bytes(context)),
     )
     _publish_manifest(destination, manifest)
 
@@ -124,7 +124,7 @@ def audit_snapshot(
         manifest = manifest.model_copy(update={"state": state})
         _publish_manifest(destination, manifest)
 
-    errors: list[PipelineError] = []
+    errors: list[PipelineError] = list(provenance_errors)
     try:
         frozen_root = destination / "snapshot"
         frozen_root.mkdir()
@@ -153,7 +153,7 @@ def audit_snapshot(
                 output_tokens=None, cost_usd=0.0, elapsed_seconds=time.monotonic() - replay_started,
                 error=None,
             )]})
-        errors = list(inventory.errors)
+        errors = [*provenance_errors, *inventory.errors]
         transition("inventoried")
         static_index = build_index(frozen, frozen_root)
         errors.extend(static_index.errors)
@@ -208,9 +208,12 @@ def audit_snapshot(
             snapshot=frozen, inventory=inventory, findings=findings,
             evidence=list(evidence_by_id.values()), coverage=list(coverage_by_id.values()),
             errors=errors, mode=mode,
-            evaluation_status="not measured / comparative acceptance incomplete; human-adjudicated evaluation not measured; Action not yet run",
+            evaluation_status="not measured / comparative acceptance incomplete; human-adjudicated evaluation not measured; workflow execution not observed",
+            run_context=context,
         )
         hashes = write_reports(report, destination)
+        if any(hashes.get(name) != manifest.context_digest for name in ("context.json", "context.jsonl")):
+            raise AuditError("run_context_digest", "written metadata differs from the immutable pre-render context", 4)
         check_deadline()
         state = "failed_integrity" if integrity_failed else "incomplete" if errors or not inventory.complete else "complete"
         manifest = manifest.model_copy(update={

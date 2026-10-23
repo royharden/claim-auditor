@@ -13,7 +13,7 @@ from ..contracts import (
     Attempt, AuditError, BudgetState, ProviderFixture, ProviderRequest,
     ProviderResponse, Span, canonical_json, sha256, stable_id, validate_relative_path,
 )
-from ..screen import screen_text
+from ..screen import screen_original_strings
 from ..snapshot.safeio import SnapshotError, read_ordinary
 
 
@@ -207,8 +207,7 @@ def produce(request: ProviderRequest, *, transport: FixtureTransport, ledger: Bu
     try:
         _validate_request(request)
         # Screen original strings, before JSON escapes could hide whitespace.
-        texts = [request.packet.readme_text, *(excerpt.quote for excerpt in request.packet.excerpts)]
-        if any(screen_text(text) for text in texts):
+        if screen_original_strings(request.packet):
             result = response("abstention_screened", "abstention_screened")
             ledger.record_event({"phase": "held", "response": result})
             return result

@@ -11,10 +11,14 @@ import multiprocessing
 import re
 import ssl
 import time
-from typing import Mapping, Protocol
+from typing import TYPE_CHECKING, Mapping, Protocol
 from urllib.parse import urlsplit
 
-from ..contracts import AuditError, LiveAuthorization, canonical_json, sha256
+from ..contracts import AuditError, LiveAuthorization, LiveBudgetAdmission, canonical_json, sha256
+from pathlib import Path
+
+if TYPE_CHECKING:
+    from .settlement import SettlementObserver
 
 
 def validate_endpoint(endpoint: str) -> tuple[str, int, str]:
@@ -66,7 +70,9 @@ class HTTPJSONTransport:
     follows_redirects = False
 
     def __init__(self, *, authorization: LiveAuthorization, allowed_endpoints: tuple[str, ...],
-                 credential_headers: Mapping[str, str], owner_activation: bool = False) -> None:
+                 credential_headers: Mapping[str, str], owner_activation: bool = False,
+                 settlement_observer: SettlementObserver | None = None,
+                 ledger_root: Path | None = None, budget_admission: LiveBudgetAdmission | None = None) -> None:
         if not owner_activation or not authorization.enabled or not allowed_endpoints:
             raise AuditError("live_not_authorized", "Explicit owner endpoint and authorization binding required.")
         for endpoint in allowed_endpoints:
@@ -83,6 +89,10 @@ class HTTPJSONTransport:
         self.authorization_id = authorization.authorization_id
         self._endpoints = frozenset(allowed_endpoints)
         self._credentials = dict(credential_headers)
+        self.settlement_observer = settlement_observer
+        self.ledger_root = ledger_root
+        self.budget_admission = (LiveBudgetAdmission.model_validate_json(canonical_json(budget_admission))
+                                 if budget_admission is not None else None)
 
     def _check_authorization(self, endpoint: str, body: bytes, cap: int) -> None:
         authorization = self._authorization
@@ -248,10 +258,12 @@ class StaticJSONTransport:
     hidden_retries = 0
     follows_redirects = False
 
-    def __init__(self, *, authorization_id: str, replies: list[JSONReply]) -> None:
+    def __init__(self, *, authorization_id: str, replies: list[JSONReply],
+                 settlement_observer: SettlementObserver | None = None) -> None:
         self.authorization_id = authorization_id
         self._replies = tuple(replies)
         self._position = 0
+        self.settlement_observer = settlement_observer
 
     def post_json(self, *, endpoint: str, body: bytes, headers: Mapping[str, str],
                   timeout_seconds: float, max_response_bytes: int,

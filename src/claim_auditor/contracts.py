@@ -278,6 +278,74 @@ class Attempt(WireModel):
     error: str | None
 
 
+class ProvenanceIdentity(WireModel):
+    value: str | None
+    basis: Literal["observed", "owner_declared", "unknown"]
+    source: str
+
+    @model_validator(mode="after")
+    def classification(self) -> ProvenanceIdentity:
+        if not self.source.strip():
+            raise ValueError("provenance source/explanation must be explicit")
+        if (self.value is None) != (self.basis == "unknown"):
+            raise ValueError("null provenance value iff unknown")
+        if self.value is not None and not self.value.strip():
+            raise ValueError("known provenance value must be nonblank")
+        return self
+
+
+class RunDeclarations(WireModel):
+    owner_id: str
+    tool_revision: str | None
+    workflow_revision: str | None
+    workflow_run_url: str | None
+    trigger_revision: str | None
+    trigger_kind: str | None
+
+    @model_validator(mode="after")
+    def explicit_declarations(self) -> RunDeclarations:
+        if not self.owner_id.strip() or any(value is not None and not value.strip() for value in (
+                self.tool_revision, self.workflow_revision, self.workflow_run_url, self.trigger_revision, self.trigger_kind)):
+            raise ValueError("declaration owner and supplied values must be explicit/nonblank")
+        return self
+
+
+class RunContext(WireModel):
+    context_version: Literal["run-context/1"]
+    context_id: str
+    run_id: str
+    started_at: str
+    snapshot_id: str
+    snapshot_manifest_digest: Digest
+    tool_version: str
+    tool_code: ProvenanceIdentity
+    python_version: ProvenanceIdentity
+    python_implementation: ProvenanceIdentity
+    dependencies: dict[str, ProvenanceIdentity]
+    mode: Literal["rules", "replay", "live"]
+    provider: ProvenanceIdentity
+    model: ProvenanceIdentity
+    prompt_digest: ProvenanceIdentity
+    packet_digest: ProvenanceIdentity
+    tool_revision: ProvenanceIdentity
+    workflow_revision: ProvenanceIdentity
+    workflow_run_url: ProvenanceIdentity
+    trigger_revision: ProvenanceIdentity
+    trigger_kind: ProvenanceIdentity
+
+    @model_validator(mode="after")
+    def identity_and_date(self) -> RunContext:
+        from datetime import datetime
+
+        if not all(value.strip() for value in (self.context_id, self.run_id, self.snapshot_id, self.tool_version)):
+            raise ValueError("run context identities/version must be explicit")
+        if datetime.fromisoformat(self.started_at.replace("Z", "+00:00")).tzinfo is None:
+            raise ValueError("run start must be timezone aware")
+        if any(not key.strip() for key in self.dependencies):
+            raise ValueError("dependency names must be explicit")
+        return self
+
+
 class RunManifest(WireModel):
     schema_version: Literal["claim-auditor/1"] = SCHEMA_VERSION
     policy_version: Literal["declared-static/1"] = POLICY_VERSION
@@ -302,6 +370,8 @@ class RunManifest(WireModel):
     workflow_revision: str | None
     workflow_run_url: str | None
     runtime_validation: Literal["unverified"] = "unverified"
+    run_context: RunContext | None = None
+    context_digest: Digest | None = None
 
 
 class AuditReport(WireModel):
@@ -315,6 +385,7 @@ class AuditReport(WireModel):
     errors: list[PipelineError]
     mode: Literal["rules", "replay", "live"]
     evaluation_status: str
+    run_context: RunContext | None = None
 
 
 class ReplayEnvelope(WireModel):
@@ -694,6 +765,126 @@ class LiveAuthorization(WireModel):
         return value
 
 
+class DatedRateCard(WireModel):
+    rate_card_id: str
+    provider: Literal["openai_compatible", "anthropic"]
+    resolved_model: str
+    valid_from: str
+    valid_until: str
+    currency: Literal["USD"]
+    units: Literal["USD_per_million_tokens"]
+    usage_semantics: Literal["openai-chat-inclusive/1", "anthropic-cache-split/1"]
+    service_tier: Literal["standard"]
+    rates: dict[str, Annotated[str, Field(pattern=r"^[0-9]{1,12}(?:\.[0-9]{1,12})?$")]]
+    source_reference: str
+    admitted: bool
+    admitted_by: str | None
+    admitted_at: str | None
+    admission_receipt: str | None
+    card_digest: Digest
+
+    @model_validator(mode="after")
+    def admission(self) -> DatedRateCard:
+        from datetime import datetime
+
+        if not all(value.strip() for value in (self.rate_card_id, self.resolved_model, self.source_reference)):
+            raise ValueError("rate identity/model/source reference required")
+        first = datetime.fromisoformat(self.valid_from.replace("Z", "+00:00"))
+        last = datetime.fromisoformat(self.valid_until.replace("Z", "+00:00"))
+        if first.tzinfo is None or last.tzinfo is None or first >= last:
+            raise ValueError("rate validity must be a nonempty aware interval")
+        if self.admitted:
+            if not (self.admitted_by or "").strip() or not (self.admission_receipt or "").strip() or self.admitted_at is None:
+                raise ValueError("admitted rates require actual owner/date/receipt references")
+            if datetime.fromisoformat(self.admitted_at.replace("Z", "+00:00")).tzinfo is None:
+                raise ValueError("rate admission date must be timezone aware")
+        elif any(value is not None for value in (self.admitted_by, self.admitted_at, self.admission_receipt)):
+            raise ValueError("unadmitted card must not invent owner admission")
+        return self
+
+
+class CostResult(WireModel):
+    status: Literal["derived", "unknown"]
+    purpose: Literal["usage", "liability"]
+    provider: Literal["openai_compatible", "anthropic"]
+    resolved_model: str | None
+    rate_card_id: str | None
+    rate_card_digest: Digest | None
+    usage_digest: Digest
+    priced_at: str
+    service_tier: str | None
+    currency: Literal["USD"] | None
+    input_tokens: int | None = Field(ge=0)
+    output_tokens: int | None = Field(ge=0)
+    categories: dict[str, int]
+    amount_decimal: str | None
+    amount_usd: float | None = Field(ge=0)
+    method: Literal["decimal64-ceil-usd-1e-12/1"]
+    error: str | None
+
+    @model_validator(mode="after")
+    def known_cost(self) -> CostResult:
+        from datetime import datetime
+
+        if datetime.fromisoformat(self.priced_at.replace("Z", "+00:00")).tzinfo is None:
+            raise ValueError("pricing time must be timezone aware")
+        if any(value < 0 for value in self.categories.values()):
+            raise ValueError("negative token categories")
+        values = (self.resolved_model, self.rate_card_id, self.rate_card_digest, self.currency,
+                  self.input_tokens, self.output_tokens, self.amount_decimal, self.amount_usd)
+        if self.status == "derived" and (any(value is None for value in values) or self.error is not None):
+            raise ValueError("derived cost requires complete explicit observations and rate identity")
+        if self.status == "unknown" and (self.amount_decimal is not None or self.amount_usd is not None or self.error is None):
+            raise ValueError("unknown cost must stay null with an explicit reason")
+        return self
+
+
+class SettlementContext(WireModel):
+    authorization_id: str
+    reservation_id: str
+    attempt_id: str
+    request_digest: Digest
+    payload_digest: Digest
+    response_digest: Digest
+    provider: Literal["openai_compatible", "anthropic"]
+    requested_model: str
+    resolved_model: str | None
+    response_id: str | None
+    origin: Literal["provider_reported", "fixture"]
+    raw_usage: object
+    service_tier: str | None
+    requested_at: str
+    pricing: CostResult
+
+
+class SettlementObservation(WireModel):
+    context_digest: Digest
+    provider: Literal["openai_compatible", "anthropic"]
+    resolved_model: str
+    response_id: str
+    rate_card_digest: Digest
+    usage_digest: Digest
+    basis: Literal["rate_card_derived", "provider_bill"]
+    amount_decimal: Annotated[str, Field(pattern=r"^[0-9]{1,12}(?:\.[0-9]{1,12})?$")]
+    cost_usd: float = Field(ge=0)
+    receipt_kind: Literal["derived_calculation", "provider_bill"]
+    receipt_reference: str
+    observer_id: str
+    observed_at: str
+
+    @model_validator(mode="after")
+    def attribution(self) -> SettlementObservation:
+        from datetime import datetime
+
+        if not all(value.strip() for value in (self.resolved_model, self.response_id, self.receipt_reference, self.observer_id)):
+            raise ValueError("actual response/observer/provenance identities required")
+        if self.receipt_kind != ("derived_calculation" if self.basis == "rate_card_derived" else "provider_bill"):
+            raise ValueError("derived calculation must never impersonate a provider bill")
+        if datetime.fromisoformat(self.observed_at.replace("Z", "+00:00")).tzinfo is None:
+            raise ValueError("settlement observation date must be timezone aware")
+        return self
+
+
 class LiveUsage(WireModel):
     origin: Literal["provider_reported", "fixture"]
     resolved_model: str | None
@@ -703,6 +894,85 @@ class LiveUsage(WireModel):
     cost_usd: float | None = Field(ge=0)
     cost_receipt: str | None
     elapsed_seconds: float | None = Field(ge=0)
+    raw_usage: object
+    cost_basis: Literal["unknown", "rate_card_derived", "provider_bill", "fixture"]
+    reported_bill_usd: float | None = Field(ge=0)
+    pricing: CostResult | None
+    settlement_context: SettlementContext | None
+    settlement_observation: SettlementObservation | None
+    cost_error: str | None
+
+
+class ReservationReconciliation(WireModel):
+    reconciliation_id: str
+    reservation_id: str
+    budget_state_digest: Digest
+    usage: LiveUsage
+    usage_receipt: str
+    pricing_receipt: str
+    usage_receipt_digest: Digest
+    pricing_receipt_digest: Digest
+    owner_id: str
+    recorded_at: str
+    rationale: str
+
+    @model_validator(mode="after")
+    def explicit_owner_action(self) -> ReservationReconciliation:
+        from datetime import datetime
+
+        if not all(value.strip() for value in (self.reconciliation_id, self.reservation_id, self.usage_receipt,
+                                               self.pricing_receipt, self.owner_id, self.rationale)):
+            raise ValueError("explicit owner reconciliation identity/actual receipt references required")
+        if datetime.fromisoformat(self.recorded_at.replace("Z", "+00:00")).tzinfo is None:
+            raise ValueError("owner reconciliation date must be timezone aware")
+        return self
+
+
+class ProviderBillReceipt(WireModel):
+    basis: Literal["owner_supplied_provider_bill"]
+    provider: Literal["openai_compatible", "anthropic"]
+    resolved_model: str
+    response_id: str
+    currency: Literal["USD"]
+    amount_decimal: Annotated[str, Field(pattern=r"^[0-9]{1,12}(?:\.[0-9]{1,12})?$")]
+    receipt_reference: str
+    issued_at: str
+    source_reference: str
+
+    @model_validator(mode="after")
+    def explicit_bill_capture(self) -> ProviderBillReceipt:
+        from datetime import datetime
+
+        if not all(value.strip() for value in (self.resolved_model, self.response_id, self.receipt_reference, self.source_reference)):
+            raise ValueError("actual supplied bill identities/source references required")
+        if datetime.fromisoformat(self.issued_at.replace("Z", "+00:00")).tzinfo is None:
+            raise ValueError("bill issue time must be timezone aware")
+        return self
+
+
+class LiveBudgetAdmission(WireModel):
+    admission_id: str
+    owner_id: str
+    admitted_at: str
+    protocol_digest: Digest
+    packet_digest: Digest
+    ledger_root_identity: Digest
+    caps_digest: Digest
+    authorization_ids: dict[str, str]
+    liability_scope: Literal["per_role_equal_caps"]
+    receipt_reference: str
+
+    @model_validator(mode="after")
+    def actor(self) -> LiveBudgetAdmission:
+        from datetime import datetime
+
+        if not all(value.strip() for value in (self.admission_id, self.owner_id, self.receipt_reference)):
+            raise ValueError("explicit actual owner budget admission references required")
+        if set(self.authorization_ids) != {"extraction", "single_pass"} or any(not value.strip() for value in self.authorization_ids.values()):
+            raise ValueError("both authorization bindings required for durable root admission")
+        if datetime.fromisoformat(self.admitted_at.replace("Z", "+00:00")).tzinfo is None:
+            raise ValueError("budget admission date must be timezone aware")
+        return self
 
 
 class LiveProviderResponse(WireModel):
@@ -776,4 +1046,108 @@ class ManualExportConfig(WireModel):
             assert self.recorded_at is not None
             if datetime.fromisoformat(self.recorded_at.replace("Z", "+00:00")).tzinfo is None:
                 raise ValueError("export action timestamp must be timezone aware")
+        return self
+
+
+class LiveExperimentConfig(WireModel):
+    """Nonsecret future owner configuration; does not itself activate anything."""
+
+    caps: ProviderCaps
+    system_prompts: dict[str, str]
+    models: dict[str, str]
+    authorizations: dict[str, LiveAuthorization]
+    allowed_endpoints: dict[str, list[str]]
+    rate_cards: dict[str, DatedRateCard]
+
+    @model_validator(mode="after")
+    def paired_roles(self) -> LiveExperimentConfig:
+        roles = {"extraction", "single_pass"}
+        for value in (self.system_prompts, self.models, self.authorizations, self.allowed_endpoints, self.rate_cards):
+            if set(value) != roles:
+                raise ValueError("exact extraction and single_pass owner configuration required")
+        for role in roles:
+            authorization = self.authorizations[role]
+            if not self.models[role].strip() or not self.system_prompts[role].strip():
+                raise ValueError("explicit model and trusted system prompt required")
+            if len(self.system_prompts[role].encode("utf-8")) > 32 * 1024:
+                raise ValueError("trusted prompt exceeds bounded configuration cap")
+            endpoints = self.allowed_endpoints[role]
+            if not endpoints or len(endpoints) != len(set(endpoints)) or authorization.endpoint not in endpoints:
+                raise ValueError("authorization endpoint must be explicitly owner-allowlisted")
+        return self
+
+
+class DatasetCase(WireModel):
+    case_id: str
+    family_id: str
+    ancestry_id: str
+    snapshot_root: str
+    snapshot_id: str
+    snapshot_manifest_digest: Digest
+    source_content_digest: Digest
+    run_root: str
+    run_manifest_digest: Digest
+    gold_path: str
+    gold_digest: Digest
+    protocol_digest: Digest | None
+    source_rights_receipt: str | None
+    custody_receipt: str | None
+
+    @model_validator(mode="after")
+    def identities(self) -> DatasetCase:
+        if not all(value.strip() for value in (self.case_id, self.family_id, self.ancestry_id,
+                                               self.snapshot_root, self.snapshot_id, self.run_root, self.gold_path)):
+            raise ValueError("dataset case/source/family/ancestry paths and identities must be explicit")
+        if any(value is not None and not value.strip() for value in (self.source_rights_receipt, self.custody_receipt)):
+            raise ValueError("optional dataset receipts must be explicit nonblank references or null")
+        return self
+
+
+class DatasetManifest(WireModel):
+    dataset_id: str
+    mode: Literal["dev_descriptive", "locked_evaluation"]
+    admitted: bool
+    admitted_by: str | None
+    admitted_at: str | None
+    protocol_id: str
+    taxonomy_version: str
+    matcher_version: str
+    packet_version: str
+    runner_version: str
+    packet_fact_version: str
+    parser_version: str
+    code_digest: Digest
+    required_arms: list[str]
+    provider_models: dict[str, str]
+    prompt_digests: dict[str, Digest]
+    caps: ProviderCaps
+    human_review_receipt: str | None
+    cases: list[DatasetCase]
+
+    @model_validator(mode="after")
+    def identities(self) -> DatasetManifest:
+        from datetime import datetime
+
+        if not all(value.strip() for value in (self.dataset_id, self.protocol_id, self.taxonomy_version,
+                                               self.matcher_version, self.packet_version, self.runner_version,
+                                               self.packet_fact_version, self.parser_version)):
+            raise ValueError("dataset identity and version fields must be explicit")
+        if self.admitted:
+            if not (self.admitted_by or "").strip() or self.admitted_at is None:
+                raise ValueError("admitted dataset requires actual actor and aware date")
+            if datetime.fromisoformat(self.admitted_at.replace("Z", "+00:00")).tzinfo is None:
+                raise ValueError("dataset admission date must be timezone aware")
+        elif self.admitted_by is not None or self.admitted_at is not None:
+            raise ValueError("unadmitted dataset must not invent admission actor/date")
+        if (not self.required_arms or len(self.required_arms) != len(set(self.required_arms))
+                or any(not value.strip() for value in self.required_arms)):
+            raise ValueError("dataset arms must be explicit, nonempty and unique")
+        if any(not key.strip() or not value.strip() for key, value in self.provider_models.items()):
+            raise ValueError("dataset provider model identities must be explicit")
+        if any(not key.strip() for key in self.prompt_digests):
+            raise ValueError("dataset prompt identities must be explicit")
+        if not self.cases or len({case.case_id for case in self.cases}) != len(self.cases):
+            raise ValueError("dataset case identities must be nonempty and unique")
+        if self.human_review_receipt is not None and not self.human_review_receipt.strip():
+            raise ValueError("human receipt must be an explicit reference or null")
         return self

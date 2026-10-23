@@ -5,20 +5,23 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import math
+import os
 import re
 import time
 
 from pydantic import ValidationError
 
-from ..accounting import BudgetLedger
+from ..accounting import BudgetLedger, budget_admission_id, ledger_root_identity
+from ..accounting.pricing import derive_cost, worst_case_cost
 from ..contracts import (
-    Attempt, AuditError, BudgetState, Claim, LiveAuthorization, LiveProposalPayload,
-    LiveProviderResponse, LiveUsage, Predicate, ProviderFixture, ProviderProposal,
+    Attempt, AuditError, BudgetState, Claim, CostResult, DatedRateCard, LiveAuthorization, LiveProposalPayload,
+    LiveProviderResponse, LiveUsage, Predicate, ProviderFixture, ProviderProposal, SettlementContext, SettlementObservation,
     ProviderRequest, SimulatedUsage, Span, canonical_json, sha256, stable_id,
 )
-from ..screen import screen_text
+from ..screen import screen_original_strings
 from .http_json import BoundedJSONTransport, JSONReply, validate_endpoint
 from .port import _validate_fixture, _validate_request, request_digest
+from .settlement import validate_settlement_observation
 
 
 def _unique(pairs: list[tuple[str, object]]) -> dict:
@@ -41,42 +44,88 @@ def _json(raw: bytes) -> dict:
     return value
 
 
-def _tokens(value: object) -> int | None:
-    return value if type(value) is int and value >= 0 else None
-
-
-def _usage(value: dict, reply: JSONReply, *, provider: str, origin: str) -> LiveUsage:
+def _usage(value: dict, reply: JSONReply, *, provider: str, origin: str,
+           card: DatedRateCard | None, at: datetime) -> LiveUsage:
     raw = value.get("usage")
-    raw = raw if isinstance(raw, dict) else {}
-    if provider == "openai_compatible":
-        inputs = _tokens(raw.get("prompt_tokens"))
-        outputs = _tokens(raw.get("completion_tokens"))
-    else:
-        components = [_tokens(raw.get(key)) for key in
-                      ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")]
-        # Missing cache observations remain unknown; no zero is invented.
-        inputs = sum(components) if all(item is not None for item in components) else None
-        outputs = _tokens(raw.get("output_tokens"))
+    model = value.get("model") if isinstance(value.get("model"), str) else None
+    tier = value.get("service_tier") if provider == "openai_compatible" else (raw.get("service_tier") if isinstance(raw, dict) else None)
+    pricing = derive_cost(card, provider=provider, resolved_model=model, raw_usage=raw,
+                          service_tier=tier if isinstance(tier, str) else None, at=at)
     cost = reply.settled_cost_usd
     receipt = reply.cost_receipt
     if cost is not None and (type(cost) not in {float, int} or not math.isfinite(cost) or cost < 0):
         raise AuditError("invalid_provider_usage", "Invalid cost observation.")
     if cost is not None and not (receipt or "").strip():
         raise AuditError("unreceipted_provider_cost", "A cost observation requires an external settlement receipt.")
-    return LiveUsage(origin=origin, resolved_model=value.get("model") if isinstance(value.get("model"), str) else None,
+    bill = float(cost) if cost is not None else None
+    if origin == "fixture":
+        basis = "fixture" if bill is not None else "unknown"
+    else:
+        # A derived calculation is not owner-enabled settlement. The optional
+        # bound observer below must explicitly admit it; absence stays unknown.
+        cost = None
+        basis = "unknown"
+    return LiveUsage(origin=origin, resolved_model=model,
                      response_id=value.get("id") if isinstance(value.get("id"), str) else None,
-                     input_tokens=inputs, output_tokens=outputs, cost_usd=float(cost) if cost is not None else None,
-                     cost_receipt=receipt, elapsed_seconds=reply.elapsed_seconds)
+                     input_tokens=pricing.input_tokens, output_tokens=pricing.output_tokens,
+                     cost_usd=float(cost) if cost is not None else None, cost_receipt=receipt,
+                     elapsed_seconds=reply.elapsed_seconds, raw_usage=raw, cost_basis=basis,
+                     reported_bill_usd=bill, pricing=pricing, settlement_context=None,
+                     settlement_observation=None, cost_error=None)
+
+
+def _observe(request: ProviderRequest, payload: bytes, authorization: LiveAuthorization,
+             reply: JSONReply, usage: LiveUsage, *, adapter: object,
+             transport: BoundedJSONTransport, at: datetime,
+             reservation_id: str, attempt_id: str) -> LiveUsage:
+    if usage.origin == "fixture":
+        return usage  # Explicit simulation remains separate; no live receipt hook.
+    if usage.pricing is None:
+        return usage.model_copy(update={"cost_usd": None, "cost_basis": "unknown", "cost_error": "pricing_unavailable"})
+    context = SettlementContext(authorization_id=authorization.authorization_id,
+                                 reservation_id=reservation_id, attempt_id=attempt_id,
+                                 request_digest=request_digest(request), payload_digest=sha256(payload),
+                                 response_digest=sha256(reply.body), provider=adapter.provider,
+                                 requested_model=request.model, resolved_model=usage.resolved_model,
+                                 response_id=usage.response_id, origin=usage.origin, raw_usage=usage.raw_usage,
+                                 service_tier=usage.pricing.service_tier, requested_at=at.isoformat(), pricing=usage.pricing)
+    # Callback gets a separate frozen copy; validation uses the original bytes.
+    sealed = canonical_json(context)
+    usage = usage.model_copy(update={"settlement_context": context})
+    observer = getattr(transport, "settlement_observer", None)
+    if observer is None:
+        return usage.model_copy(update={"cost_error": "settlement_observer_absent"})
+    try:
+        if not callable(observer):
+            raise AuditError("invalid_settlement_observer", "Explicit trusted callable required.")
+        observation = observer(SettlementContext.model_validate_json(sealed))
+        if observation is None:
+            return usage.model_copy(update={"cost_error": "settlement_observer_unknown"})
+        observation = SettlementObservation.model_validate_json(canonical_json(observation))
+        observation = validate_settlement_observation(SettlementContext.model_validate_json(sealed), observation,
+                                                       rate_card=adapter.rate_card)
+        if observation.basis == "provider_bill" and usage.reported_bill_usd is not None and observation.cost_usd != usage.reported_bill_usd:
+            raise AuditError("settlement_bill_mismatch", "Supplied provider bill observations disagree.", 4)
+        return usage.model_copy(update={"cost_usd": observation.cost_usd, "cost_basis": observation.basis,
+                                       "cost_receipt": observation.receipt_reference,
+                                       "reported_bill_usd": observation.cost_usd if observation.basis == "provider_bill" else usage.reported_bill_usd,
+                                       "settlement_observation": observation, "cost_error": None})
+    except Exception as exc:
+        reason = exc.reason if isinstance(exc, AuditError) else "settlement_observer_failure"
+        return usage.model_copy(update={"cost_usd": None, "cost_basis": "unknown", "cost_error": reason})
 
 
 class OpenAICompatibleAdapter:
     provider = "openai_compatible"
     route = "/v1/chat/completions"
 
+    def __init__(self, *, rate_card: DatedRateCard | None = None) -> None:
+        self.rate_card = rate_card
+
     def build_request(self, request: ProviderRequest, system_prompt: str, version: str | None) -> bytes:
         if version is not None:
             raise AuditError("invalid_provider_version", "OpenAI-compatible requests do not carry an Anthropic version.")
-        return canonical_json({
+        fields = {
             "model": request.model, "stream": False, "store": False, "n": 1,
             "max_completion_tokens": request.caps.request_output_tokens,
             "messages": [{"role": "system", "content": system_prompt},
@@ -84,7 +133,10 @@ class OpenAICompatibleAdapter:
             "tools": [], "tool_choice": "none",
             "response_format": {"type": "json_schema", "json_schema": {
                 "name": "claim_proposals", "strict": True, "schema": LiveProposalPayload.model_json_schema()}},
-        })
+        }
+        if self.rate_card is not None:
+            fields["service_tier"] = "default"
+        return canonical_json(fields)
 
     def parse_response(self, value: dict) -> tuple[str | None, str | None]:
         choices = value.get("choices")
@@ -106,16 +158,22 @@ class AnthropicAdapter:
     provider = "anthropic"
     route = "/v1/messages"
 
+    def __init__(self, *, rate_card: DatedRateCard | None = None) -> None:
+        self.rate_card = rate_card
+
     def build_request(self, request: ProviderRequest, system_prompt: str, version: str | None) -> bytes:
         if not version or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", version):
             raise AuditError("invalid_provider_version", "Owner must pin the Anthropic API version.")
         # JSON is validated locally; no unsupported structured-output option or
         # tool call is silently assumed to work on an owner-selected model.
         instruction = system_prompt + "\nReturn only JSON conforming to this schema:\n" + canonical_json(LiveProposalPayload.model_json_schema()).decode("utf-8")
-        return canonical_json({"model": request.model, "stream": False,
+        fields = {"model": request.model, "stream": False,
                                "max_tokens": request.caps.request_output_tokens,
                                "system": instruction,
-                               "messages": [{"role": "user", "content": canonical_json(request.packet).decode("utf-8")} ]})
+                               "messages": [{"role": "user", "content": canonical_json(request.packet).decode("utf-8")} ]}
+        if self.rate_card is not None:
+            fields["service_tier"] = "standard_only"
+        return canonical_json(fields)
 
     def parse_response(self, value: dict) -> tuple[str | None, str | None]:
         if value.get("stop_reason") == "refusal":
@@ -130,7 +188,7 @@ class AnthropicAdapter:
 
 
 def _admit(request: ProviderRequest, payload: bytes, authorization: LiveAuthorization,
-           transport: BoundedJSONTransport, adapter: object) -> None:
+           transport: BoundedJSONTransport, adapter: object) -> CostResult | None:
     if not authorization.enabled:
         raise AuditError("live_not_authorized", "Explicit future owner activation is required.")
     try:
@@ -162,6 +220,23 @@ def _admit(request: ProviderRequest, payload: bytes, authorization: LiveAuthoriz
     if not all(value.strip() for value in (authorization.authorized_by, authorization.authorization_id,
                                            authorization.tokenizer_receipt, authorization.worst_case_cost_receipt)):
         raise AuditError("live_not_authorized", "Admission receipts must be explicit, never inferred.")
+    if transport.execution_kind == "live":
+        admission = getattr(transport, "budget_admission", None)
+        root = getattr(transport, "ledger_root", None)
+        if admission is None or root is None:
+            raise AuditError("durable_budget_admission_required", "Real transport requires the explicit durable owner budget binding.", 3)
+        if (admission.admission_id != budget_admission_id(admission)
+                or admission.ledger_root_identity != ledger_root_identity(root)
+                or admission.packet_digest != request.packet.packet_digest
+                or admission.authorization_ids.get(request.arm) != authorization.authorization_id):
+            raise AuditError("budget_admission_mismatch", "Durable budget belongs to a different root/packet/owner role.", 4)
+        liability = worst_case_cost(adapter.rate_card, provider=adapter.provider, model=request.model,
+                                    input_tokens=request.caps.request_input_tokens,
+                                    output_tokens=request.caps.request_output_tokens, at=datetime.now(timezone.utc))
+        if liability.amount_usd is None or liability.amount_usd > request.caps.request_cost_usd:
+            raise AuditError("pricing_liability_exceeds_cap", "Declared request reserve is below admitted dated-rate worst case.", 3)
+        return liability
+    return None
 
 
 def _proposals(request: ProviderRequest, text: str) -> list[ProviderProposal]:
@@ -236,6 +311,12 @@ def produce_live(request: ProviderRequest, *, system_prompt: str,
     payload = adapter.build_request(request, system_prompt, authorization.anthropic_version)
     _admit(request, payload, authorization, transport, adapter)
     mode = "fake" if transport.execution_kind == "fixture" else "live"
+    if mode == "live":
+        from pathlib import Path
+
+        root = Path(os.path.abspath(transport.ledger_root))
+        if root not in Path(os.path.abspath(ledger.root)).parents:
+            raise AuditError("budget_ledger_outside_admission", "Producer leaf must remain inside the owner-selected durable root.", 4)
     attempts = []
     observations = []
 
@@ -256,7 +337,7 @@ def produce_live(request: ProviderRequest, *, system_prompt: str,
                                                 "error": f"{error or status};response_event_persistence_failed"})
         return result
 
-    if any(screen_text(text) for text in [request.packet.readme_text, *(e.quote for e in request.packet.excerpts)]):
+    if screen_original_strings(request.packet):
         return response("abstention_screened", "abstention_screened")
     caps = request.caps
     initial = BudgetState(remaining_input_tokens=caps.total_input_tokens,
@@ -272,7 +353,7 @@ def produce_live(request: ProviderRequest, *, system_prompt: str,
         return response("incomplete", ledger_error(exc))
     for index in range(caps.max_retries + 1):
         try:
-            _admit(request, payload, authorization, transport, adapter)
+            liability = _admit(request, payload, authorization, transport, adapter)
             if time.monotonic() - total_started + caps.request_seconds > caps.total_seconds:
                 return response("incomplete", "provider_total_deadline")
             reservation = ledger.reserve(caps.request_input_tokens, caps.request_output_tokens,
@@ -291,7 +372,10 @@ def produce_live(request: ProviderRequest, *, system_prompt: str,
         attempts.append(attempt)
         try:
             ledger.record_event({"phase": "reserved", "attempt": attempt, "reservation": reservation,
-                                 "authorization_id": authorization.authorization_id, "payload_digest": sha256(payload)})
+                                 "authorization_id": authorization.authorization_id, "payload_digest": sha256(payload),
+                                 "request_digest": request_digest(request), "rate_card": adapter.rate_card,
+                                 "budget_admission": getattr(transport, "budget_admission", None),
+                                 "pricing_liability": liability})
         except (AuditError, OSError, ValueError, TypeError) as exc:
             attempts[position] = attempt.model_copy(update={"status": "incomplete", "error": ledger_error(exc)})
             return response("incomplete", ledger_error(exc))
@@ -301,6 +385,7 @@ def produce_live(request: ProviderRequest, *, system_prompt: str,
         retryable = False
         try:
             started = time.monotonic()
+            requested_at = datetime.now(timezone.utc)
             headers = {"anthropic-version": authorization.anthropic_version} if adapter.provider == "anthropic" else {}
             reply = transport.post_json(endpoint=authorization.endpoint, body=payload, headers=headers,
                                         timeout_seconds=caps.request_seconds, max_response_bytes=authorization.max_response_bytes,
@@ -314,7 +399,11 @@ def produce_live(request: ProviderRequest, *, system_prompt: str,
                 raise AuditError("invalid_transport_reply", "Transport elapsed observation exceeds bounded contract.")
             value = _json(reply.body)
             observed = _usage(value, reply, provider=adapter.provider,
-                              origin="fixture" if mode == "fake" else "provider_reported")
+                              origin="fixture" if mode == "fake" else "provider_reported",
+                              card=adapter.rate_card, at=requested_at)
+            observed = _observe(request, payload, authorization, reply, observed,
+                                adapter=adapter, transport=transport, at=requested_at,
+                                reservation_id=reservation.reservation_id, attempt_id=attempt.attempt_id)
             observations.append(observed)
             if not 200 <= reply.status_code < 300:
                 reason = "provider_http_error"
@@ -351,7 +440,7 @@ def produce_live(request: ProviderRequest, *, system_prompt: str,
             attempts[position] = attempt.model_copy(update={"status": "incomplete", "error": ledger_error(exc)})
             return response("incomplete", ledger_error(exc), proposals)
         if status == "incomplete":
-            return response("incomplete", reason or "unsettled_liability", proposals)
+            return response("incomplete", reason or (observed.cost_error if observed else None) or "unsettled_liability", proposals)
         if reason is None:
             return response("proposed", None, proposals)
         if not retryable or index == caps.max_retries:
