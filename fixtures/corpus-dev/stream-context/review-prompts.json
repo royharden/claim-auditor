@@ -1,0 +1,63 @@
+{
+  "family_id": "dev-stream-context",
+  "designation": "DEV_ONLY",
+  "status": "Original review prompts; not extracted claims or gold",
+  "review_focus": "Reopen exact source; distinguish declarations, wrong literals, unsupported semantics and conditional scope. No final labels supplied.",
+  "assertions": [
+    {
+      "author_ordinal": 0,
+      "readme_quote": "The function `open_rows` is declared in module `streams`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 1,
+      "readme_quote": "The function `iter_rows` is declared in module `streams`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 2,
+      "readme_quote": "The function `iter_rows` has literal default `limit=4` in module `streams`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 3,
+      "readme_quote": "The function `iter_rows` has literal default `limit=40` in module `streams`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 4,
+      "readme_quote": "The function `flush_rows` is declared in module `streams`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 5,
+      "readme_quote": "The file `streams.py` exists.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 6,
+      "readme_quote": "The file `buffer.bin` does not exist.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 7,
+      "readme_quote": "The environment variable `STREAM_HOME` is not referenced.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 8,
+      "readme_quote": "The function `open_rows` is declared in module `streams` if the filesystem is writable.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 9,
+      "readme_quote": "The reader safely closes every resource after cancellation.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 10,
+      "readme_quote": "The stream pipeline guarantees constant memory in production.",
+      "review_required": true
+    }
+  ]
+}

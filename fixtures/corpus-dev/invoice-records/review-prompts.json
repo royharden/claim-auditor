@@ -1,0 +1,68 @@
+{
+  "family_id": "dev-invoice-records",
+  "designation": "DEV_ONLY",
+  "status": "Original review prompts; not extracted claims or gold",
+  "review_focus": "Reopen exact source; distinguish declarations, wrong literals, unsupported semantics and conditional scope. No final labels supplied.",
+  "assertions": [
+    {
+      "author_ordinal": 0,
+      "readme_quote": "The file `records.py` exists.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 1,
+      "readme_quote": "The class `Record` is declared in module `records`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 2,
+      "readme_quote": "The class `Invoice` is declared in module `records`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 3,
+      "readme_quote": "The method `Invoice.total` is declared in module `records`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 4,
+      "readme_quote": "The method `Invoice.refund` is declared in module `records`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 5,
+      "readme_quote": "The constant `CURRENCY` equals `\"USD\"` in module `records`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 6,
+      "readme_quote": "The constant `CURRENCY` equals `\"EUR\"` in module `records`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 7,
+      "readme_quote": "The file `refunds.py` does not exist.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 8,
+      "readme_quote": "The environment variable `INVOICE_KEY` is not referenced.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 9,
+      "readme_quote": "The method `Invoice.total` is declared in module `records` when invoices are enabled.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 10,
+      "readme_quote": "The invoice calculation returns correct tax amounts in every jurisdiction.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 11,
+      "readme_quote": "The invoice service has zero downtime in production.",
+      "review_required": true
+    }
+  ]
+}

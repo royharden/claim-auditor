@@ -1,0 +1,63 @@
+{
+  "family_id": "dev-dispatch-types",
+  "designation": "DEV_ONLY",
+  "status": "Original review prompts; not extracted claims or gold",
+  "review_focus": "Reopen exact source; distinguish declarations, wrong literals, unsupported semantics and conditional scope. No final labels supplied.",
+  "assertions": [
+    {
+      "author_ordinal": 0,
+      "readme_quote": "The function `render` is declared in module `formatting`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 1,
+      "readme_quote": "The function `render_integer` is declared in module `formatting`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 2,
+      "readme_quote": "The function `render_bytes` is declared in module `formatting`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 3,
+      "readme_quote": "The function `render` contains an explicit `raise TypeError` statement in module `formatting`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 4,
+      "readme_quote": "The constant `PREFIX` equals `\"int:\"` in module `formatting`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 5,
+      "readme_quote": "The constant `PREFIX` equals `\"integer:\"` in module `formatting`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 6,
+      "readme_quote": "The file `formatting.py` exists.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 7,
+      "readme_quote": "The dependency `jinja2` is not declared.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 8,
+      "readme_quote": "The function `render_text` is declared in module `formatting` when a plugin registers it.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 9,
+      "readme_quote": "The renderer supports every Python type.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 10,
+      "readme_quote": "The renderer has submillisecond latency in production.",
+      "review_required": true
+    }
+  ]
+}

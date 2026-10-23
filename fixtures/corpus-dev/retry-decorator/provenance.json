@@ -1,0 +1,38 @@
+{
+  "format": "corpus-dev-provenance/1",
+  "family_id": "dev-retry-decorator",
+  "designation": "DEV_ONLY",
+  "author_type": "agent",
+  "author_id": "0012_Codex_gpt-61-sol_D7",
+  "author_session": "01a16a95-430e-7d92-966e-e2ca8e221991",
+  "authored_on": "2026-10-23",
+  "origin": "Original distinct source authored for R02 DEV expansion; no external source acquisition.",
+  "rights_basis": "Original agent-authored project material; no copied third-party implementation; not an independent rights-review receipt.",
+  "ancestry": {
+    "parent_family": null,
+    "mutation_of": null,
+    "structure": "higher-order-decorator-and-closure-replacement",
+    "shared_elements": "Explicit README grammar only; same agent author, no claim of human independence."
+  },
+  "source_root": "source",
+  "source_inventory": [
+    {
+      "path": "README.md",
+      "sha256": "42f0dae4f54093b03a5214d7a9c61fb32b8ec4578ca65c394ab981767acdd97d",
+      "size": 767
+    },
+    {
+      "path": "retrying.py",
+      "sha256": "5e21a3ddf11c26cbda4e7327d4edf33973eb6771d94a27d27280f80272d8c0de",
+      "size": 587
+    }
+  ],
+  "inventory_digest_method": "sha256(sorted compact JSON source_inventory, ensure_ascii default)",
+  "source_inventory_digest": "31f737acd250af7ce6784f2ec8d31dfbc30e21d85f8938d223269b10c539b4ab",
+  "authored_assertion_count": 12,
+  "extraction_status": "NOT_RUN",
+  "label_status": "UNLABELED_AGENT_PROPOSALS",
+  "human_review_status": "NOT_PERFORMED",
+  "heldout": false,
+  "custody_status": "No custody or blindness claim; exposed development source."
+}

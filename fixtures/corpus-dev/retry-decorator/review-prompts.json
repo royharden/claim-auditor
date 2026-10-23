@@ -1,0 +1,68 @@
+{
+  "family_id": "dev-retry-decorator",
+  "designation": "DEV_ONLY",
+  "status": "Original review prompts; not extracted claims or gold",
+  "review_focus": "Reopen exact source; distinguish declarations, wrong literals, unsupported semantics and conditional scope. No final labels supplied.",
+  "assertions": [
+    {
+      "author_ordinal": 0,
+      "readme_quote": "The function `retry` is declared in module `retrying`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 1,
+      "readme_quote": "The function `deliver` is declared in module `retrying`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 2,
+      "readme_quote": "The function `deliver` has literal decorator argument `attempts=2` in module `retrying`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 3,
+      "readme_quote": "The function `deliver` has literal decorator argument `attempts=20` in module `retrying`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 4,
+      "readme_quote": "The function `cancel` is declared in module `retrying`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 5,
+      "readme_quote": "The function `schedule` is not declared in module `retrying`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 6,
+      "readme_quote": "The constant `BACKOFF` equals `0.25` in module `retrying`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 7,
+      "readme_quote": "The file `retrying.py` exists.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 8,
+      "readme_quote": "The file `scheduler.py` does not exist.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 9,
+      "readme_quote": "The function `deliver` is declared in module `retrying` if the decorator accepts it.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 10,
+      "readme_quote": "The delivery retries all transient failures safely.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 11,
+      "readme_quote": "The worker sustains 5000 requests per second in production.",
+      "review_required": true
+    }
+  ]
+}

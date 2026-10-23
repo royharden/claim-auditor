@@ -1,0 +1,63 @@
+{
+  "family_id": "dev-layered-settings",
+  "designation": "DEV_ONLY",
+  "status": "Original review prompts; not extracted claims or gold",
+  "review_focus": "Reopen exact source; distinguish declarations, wrong literals, unsupported semantics and conditional scope. No final labels supplied.",
+  "assertions": [
+    {
+      "author_ordinal": 0,
+      "readme_quote": "The file `settings.py` exists.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 1,
+      "readme_quote": "The function `load_settings` is declared in module `settings`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 2,
+      "readme_quote": "The function `save_settings` is declared in module `settings`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 3,
+      "readme_quote": "The config key `tool.queue.batch` equals `6` in `pyproject.toml`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 4,
+      "readme_quote": "The config key `tool.queue.batch` equals `60` in `pyproject.toml`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 5,
+      "readme_quote": "The dependency `pydantic` is declared.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 6,
+      "readme_quote": "The dependency `redis` is not declared.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 7,
+      "readme_quote": "The project version is `0.6.0`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 8,
+      "readme_quote": "The config key `tool.queue.batch` equals `6` in `pyproject.toml` when the dev profile is selected.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 9,
+      "readme_quote": "The loader safely merges all unknown configuration keys.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 10,
+      "readme_quote": "The queue processes every message exactly once in production.",
+      "review_required": true
+    }
+  ]
+}

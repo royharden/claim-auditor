@@ -1,0 +1,63 @@
+{
+  "family_id": "dev-typing-platform",
+  "designation": "DEV_ONLY",
+  "status": "Original review prompts; not extracted claims or gold",
+  "review_focus": "Reopen exact source; distinguish declarations, wrong literals, unsupported semantics and conditional scope. No final labels supplied.",
+  "assertions": [
+    {
+      "author_ordinal": 0,
+      "readme_quote": "The file `adapter.py` exists.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 1,
+      "readme_quote": "The function `platform_name` is declared in module `adapter`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 2,
+      "readme_quote": "The class `DebugSession` is declared in module `adapter`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 3,
+      "readme_quote": "The function `attach` is declared in module `adapter`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 4,
+      "readme_quote": "The constant `PROTOCOL` equals `\"stdio\"` in module `adapter`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 5,
+      "readme_quote": "The constant `PROTOCOL` equals `\"socket\"` in module `adapter`.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 6,
+      "readme_quote": "The environment variable `ADAPTER_TRACE` is referenced.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 7,
+      "readme_quote": "The file `socket_adapter.py` does not exist.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 8,
+      "readme_quote": "The class `DebugSession` is declared in module `adapter` if type checking is enabled.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 9,
+      "readme_quote": "The adapter works with all Windows debuggers.",
+      "review_required": true
+    },
+    {
+      "author_ordinal": 10,
+      "readme_quote": "The debug service is available 24 hours per day in production.",
+      "review_required": true
+    }
+  ]
+}
