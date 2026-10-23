@@ -57,6 +57,27 @@ does not mean the repository is correct.
 - `providers`, `screen`, `accounting`: explicit replay/disabled-live boundary,
   conservative model-input hold and bounded durable reservation port.
 
+W2 adds typed fake/replay extraction and single-pass proposal source, paired-arm
+orchestration, DEV-only annotation packages and append-only ruling operations.
+These paths have **not run**. New CLI entrypoints for later authorized activation:
+
+```console
+uv run claim-auditor paired-run --packet results-local/prepared/packet.json --snapshot results-local/snapshot-001 --config paired-input.json --out results-local/paired-001
+uv run claim-auditor annotation-package --run results-local/audit-001 --family-id dev-example --out results-local/annotation-001
+uv run claim-auditor rulings-import --ledger results-local/rulings.jsonl --input operator-rulings.jsonl
+uv run claim-auditor rulings-export --ledger results-local/rulings.jsonl --out results-local/rulings-export.jsonl
+```
+
+`paired-input.json` must follow closed `PairedRunConfig`; it provides both fake
+fixture arms or explicit relative replay paths, declared caps and prompt/model
+identities. See [provider modes](docs/provider-modes.md). `paired-run` returns 3
+because fake/replay assembly cannot complete actual comparative acceptance.
+Fixture usage is simulated; live observations remain unknown. Annotation packages
+contain source and blank review instructions, with no prepopulated human judgments.
+Human imports additionally require the operator's `--confirm-human-action` after
+actual human review with explicit action IDs. Agent judgments never become human
+gold; importing records does not establish correctness or consensus.
+
 ## Evidence and measurement
 
 Rules mode uses no model. Replay is explicitly identified and does not become a

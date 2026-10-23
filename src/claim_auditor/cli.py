@@ -42,6 +42,23 @@ def _parser() -> argparse.ArgumentParser:
     score.add_argument("--predictions", type=Path, required=True)
     score.add_argument("--gold", type=Path, required=True)
     score.add_argument("--out", type=Path, required=True)
+    paired = commands.add_parser("paired-run", help="Future fake/replay assembly only; comparative acceptance remains incomplete.")
+    paired.add_argument("--packet", type=Path, required=True)
+    paired.add_argument("--snapshot", type=Path, required=True)
+    paired.add_argument("--config", type=Path, required=True)
+    paired.add_argument("--out", type=Path, required=True)
+    annotation = commands.add_parser("annotation-package", help="Prepare a DEV-only blank operator review package from a verified report.")
+    annotation.add_argument("--run", type=Path, required=True)
+    annotation.add_argument("--family-id", required=True)
+    annotation.add_argument("--out", type=Path, required=True)
+    ruling_import = commands.add_parser("rulings-import", help="Append validated judgments; never manufacture human review.")
+    ruling_import.add_argument("--ledger", type=Path, required=True)
+    ruling_import.add_argument("--input", type=Path, required=True)
+    ruling_import.add_argument("--confirm-human-action", action="store_true",
+                               help="Operator explicitly confirms actual human actions identified in incoming records.")
+    ruling_export = commands.add_parser("rulings-export", help="Export full append-only ruling history to a fresh file.")
+    ruling_export.add_argument("--ledger", type=Path, required=True)
+    ruling_export.add_argument("--out", type=Path, required=True)
     return parser
 
 
@@ -114,6 +131,43 @@ def main(argv: list[str] | None = None) -> int:
 
             result = score_predictions(args.predictions, args.gold, args.out)
             print(canonical_json(result).decode("utf-8"))
+            return 0
+        if args.command == "paired-run":
+            from .contracts import EvaluationPacket, PairedRunConfig
+            from .evaluation.runner import run_paired
+            from .providers import FakeTransport, ReplayTransport
+            from .snapshot.safeio import read_ordinary
+
+            packet = EvaluationPacket.model_validate_json(read_ordinary(args.packet.parent, args.packet.name, cap=4 * 1024 * 1024))
+            config = PairedRunConfig.model_validate_json(read_ordinary(args.config.parent, args.config.name, cap=8 * 1024 * 1024))
+            if config.mode == "fake":
+                transports = {arm: FakeTransport(fixtures) for arm, fixtures in config.fixtures.items()}
+            else:
+                transports = {arm: ReplayTransport([args.config.parent.joinpath(*path.split("/")) for path in paths])
+                              for arm, paths in config.replay_files.items()}
+            result = run_paired(packet, args.snapshot, args.out, transports=transports,
+                                caps=config.caps, prompts=config.prompts, models=config.models,
+                                include_full_index=config.include_full_index)
+            print(canonical_json(result).decode("utf-8"))
+            print("fake/replay source assembly; runtime unverified; not measured / comparative acceptance incomplete", file=sys.stderr)
+            return 3
+        if args.command == "annotation-package":
+            from .evaluation.rulings import prepare_annotation_package
+
+            digest = prepare_annotation_package(args.run, args.out, family_id=args.family_id)
+            print(canonical_json({"package_digest": digest, "human_review_performed": False,
+                                  "gold_created": False}).decode("utf-8"))
+            return 0
+        if args.command == "rulings-import":
+            from .evaluation.rulings import import_rulings
+
+            added = import_rulings(args.ledger, args.input, human_confirmation=args.confirm_human_action)
+            print(canonical_json({"appended": len(added), "consensus_created": False}).decode("utf-8"))
+            return 0
+        if args.command == "rulings-export":
+            from .evaluation.rulings import export_rulings
+
+            print(canonical_json({"export_digest": export_rulings(args.ledger, args.out)}).decode("utf-8"))
             return 0
         raise AuditError("unknown_command", "No handler for requested command.")
     except AuditError as exc:

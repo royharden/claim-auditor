@@ -43,6 +43,23 @@ and independently recognized atoms, is visibly replay, and supplies no live qual
 or cost evidence. Future comparison admission must preserve the required live
 extraction and single-pass arms; optional Jev cannot substitute for either.
 
+W2 adds a distinct raw-packet `ProviderRequest`/`ProviderResponse` port, closed
+`ProviderCaps`, `ProviderFixture`, `ProviderProposal`, `SimulatedUsage` and local
+`PairedRunConfig`. No rule candidate list or labels enter provider requests.
+New exact-span atoms are validated against raw prose and the bounded predicate
+grammar; unknown semantics remain explicit. See [provider modes](provider-modes.md)
+for required fields, source identities, fixture usage and durable budget rules.
+No existing four-way finding or legacy replay wire signature changed.
+
+`AnnotationRuling` requires ruling/source/claim/evidence identities, `atom:GoldAtom`,
+timezone-aware `recorded_at`, explicit nullable `supersedes_ruling_id` and
+`human_action_id`. Its schema checks exact claim digest and annotator provenance:
+agent records cannot carry human actions; human records require an explicit action
+ID. A nonempty string is not proof of review. The ruling service additionally
+checks content-addressed IDs, reopened-byte bindings and explicit operator human
+confirmation, retaining history and disagreements. Rulings are judgments, not
+verified source evidence, consensus, human gold or heldout custody certification.
+
 Source reference for strict models and serialization: [Pydantic configuration](https://pydantic.dev/docs/validation/latest/api/pydantic/config/)
 and [serialization](https://pydantic.dev/docs/validation/latest/concepts/serialization/),
 consulted 2026-10-23. No dependency installation or runtime conformance occurred.

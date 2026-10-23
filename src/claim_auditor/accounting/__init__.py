@@ -8,7 +8,7 @@ import time
 import uuid
 from pathlib import Path
 
-from ..contracts import AuditError, BudgetState, Reservation, canonical_json
+from ..contracts import AuditError, BudgetState, ProviderCaps, Reservation, canonical_json, sha256
 
 
 class BudgetLedger:
@@ -38,7 +38,9 @@ class BudgetLedger:
         os.replace(temp, self.root / "budget.json")
 
     def reserve(self, input_tokens: int, output_tokens: int, cost_usd: float, seconds: float) -> Reservation:
-        if min(input_tokens, output_tokens, cost_usd, seconds) < 0:
+        if (type(input_tokens) is not int or type(output_tokens) is not int
+                or any(not math.isfinite(value) or value < 0
+                       for value in (input_tokens, output_tokens, cost_usd, seconds))):
             raise AuditError("invalid_budget_reservation", "Liability cannot be negative.")
         fd = self._locked()
         try:
@@ -54,6 +56,68 @@ class BudgetLedger:
             )
             self._save(state.model_copy(update={"pending": reservation}))
             return reservation
+        finally:
+            os.close(fd)
+            (self.root / "write.lock").unlink()
+
+    def record_event(self, value: object) -> None:
+        """Append durable source-attributed events; no provider observations invented."""
+        fd = self._locked()
+        try:
+            with (self.root / "attempts.jsonl").open("ab") as stream:
+                stream.write(canonical_json(value) + b"\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+        finally:
+            os.close(fd)
+            (self.root / "write.lock").unlink()
+
+    def begin_request(self, request_digest: str, packet_digest: str, caps: ProviderCaps,
+                      initial: BudgetState, *, treatment: str = "unspecified",
+                      max_logical_requests: int | None = None) -> None:
+        """Persist logical-request admission; crash/replay cannot reset retry liability.
+
+        One ledger belongs to one treatment's packet, shared across its logical
+        requests. Paired treatments use distinct ledgers with identical caps.
+        """
+        import json
+
+        fd = self._locked()
+        try:
+            if self.initial != initial:
+                raise AuditError("budget_cap_mismatch", "Ledger initial cap differs from request.")
+            maximum = caps.max_logical_requests if max_logical_requests is None else min(max_logical_requests, caps.max_logical_requests)
+            identity = sha256(canonical_json({"packet": packet_digest, "caps": caps,
+                                              "treatment": treatment, "maximum": maximum}))
+            path = self.root / "requests.json"
+            if path.exists():
+                if path.stat().st_size > 16 * 1024:
+                    raise AuditError("invalid_request_ledger", "Logical request journal exceeds cap.")
+                value = json.loads(path.read_bytes())
+                if (not isinstance(value, dict) or set(value) != {"identity", "requests"}
+                        or value["identity"] != identity or not isinstance(value["requests"], list)
+                        or any(not isinstance(item, str) for item in value["requests"])):
+                    raise AuditError("budget_identity_mismatch", "Existing ledger packet/caps differ.")
+            else:
+                # Initialize budget before journaling the first admitted request.
+                # Existing pending or unknown state is always respected.
+                value = {"identity": identity, "requests": []}
+            state = self._read()
+            if state.pending is not None or state.unknown_settlement:
+                raise AuditError("unsettled_liability", "Reconcile the previous reservation first.", 3)
+            if request_digest in value["requests"]:
+                raise AuditError("duplicate_logical_request", "Use a fresh treatment ledger; no silent replay restart.", 3)
+            if len(value["requests"]) >= maximum:
+                raise AuditError("logical_request_limit", "Logical request cap reached.", 3)
+            value["requests"].append(request_digest)
+            temp = self.root / f".requests-{uuid.uuid4().hex}.tmp"
+            with temp.open("xb") as stream:
+                stream.write(canonical_json(value))
+                stream.flush()
+                os.fsync(stream.fileno())
+            if not (self.root / "budget.json").exists():
+                self._save(state)
+            os.replace(temp, path)
         finally:
             os.close(fd)
             (self.root / "write.lock").unlink()

@@ -498,3 +498,143 @@ class AuditError(Exception):
         self.detail = detail
         self.exit_code = exit_code
         super().__init__(f"{reason}: {detail}")
+
+
+class ProviderCaps(WireModel):
+    """Shared per-packet ceilings and worst-case liability per physical attempt."""
+
+    total_input_tokens: int = Field(gt=0, le=32000)
+    total_output_tokens: int = Field(gt=0, le=8000)
+    total_seconds: float = Field(gt=0, le=60)
+    total_cost_usd: float = Field(ge=0)
+    request_input_tokens: int = Field(gt=0)
+    request_output_tokens: int = Field(gt=0)
+    request_seconds: float = Field(gt=0, le=30)
+    request_cost_usd: float = Field(ge=0)
+    max_logical_requests: int = Field(ge=1, le=2)
+    max_retries: int = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def liabilities(self) -> ProviderCaps:
+        if (self.request_input_tokens > self.total_input_tokens
+                or self.request_output_tokens > self.total_output_tokens
+                or self.request_seconds > self.total_seconds
+                or self.request_cost_usd > self.total_cost_usd):
+            raise ValueError("attempt liability exceeds shared cap")
+        return self
+
+
+class AnnotationRuling(WireModel):
+    ruling_id: str
+    source_manifest_digest: Digest
+    claim_digest: Digest
+    evidence_digest: Digest
+    atom: GoldAtom
+    recorded_at: str
+    supersedes_ruling_id: str | None
+    human_action_id: str | None
+
+    @model_validator(mode="after")
+    def identities(self) -> AnnotationRuling:
+        from datetime import datetime
+
+        if sha256(canonical_json(self.atom.claim)) != self.claim_digest:
+            raise ValueError("ruling claim digest differs from exact atom claim")
+        if self.atom.annotator_type == "agent" and self.human_action_id is not None:
+            raise ValueError("agent ruling cannot carry a human action")
+        if self.atom.annotator_type == "human" and not (self.human_action_id or "").strip():
+            raise ValueError("human ruling requires explicit human action identity")
+        if not self.atom.annotator_id.strip() or not self.atom.rationale.strip():
+            raise ValueError("ruling requires annotator identity and rationale")
+        if datetime.fromisoformat(self.recorded_at.replace("Z", "+00:00")).tzinfo is None:
+            raise ValueError("ruling timestamp must be timezone aware")
+        if self.supersedes_ruling_id == self.ruling_id:
+            raise ValueError("ruling cannot supersede itself")
+        return self
+
+
+class ProviderRequest(WireModel):
+    arm: Literal["extraction", "single_pass"]
+    packet: EvaluationPacket
+    input_digest: Digest
+    prompt_digest: Digest
+    model: str = Field(min_length=1, max_length=200)
+    policy_version: Literal["declared-static/1"]
+    caps: ProviderCaps
+
+
+class ProviderProposal(WireModel):
+    candidate_id: str
+    claim: Claim
+    relation: Relation | None
+    evidence_spans: list[Span] = Field(max_length=200)
+
+
+class SimulatedUsage(WireModel):
+    """Fixture bookkeeping, never actual provider observations."""
+
+    input_tokens: int | None = Field(ge=0)
+    output_tokens: int | None = Field(ge=0)
+    cost_usd: float | None = Field(ge=0)
+    elapsed_seconds: float | None = Field(ge=0)
+
+
+class ProviderFixture(WireModel):
+    request_digest: Digest
+    proposals: list[ProviderProposal] = Field(max_length=200)
+    simulated_usage: SimulatedUsage
+    error: str | None
+    retryable: bool
+
+    @model_validator(mode="after")
+    def outcome(self) -> ProviderFixture:
+        if self.error is None and self.retryable:
+            raise ValueError("successful fixture cannot request retry")
+        if self.error is not None and self.proposals:
+            raise ValueError("failed fixture cannot carry proposals")
+        return self
+
+
+class ProviderResponse(WireModel):
+    request_digest: Digest
+    status: Literal["proposed", "abstention_screened", "invalid_output", "execution_failure", "incomplete"]
+    proposals: list[ProviderProposal]
+    attempts: list[Attempt]
+    simulated_usage: list[SimulatedUsage]
+    error: str | None
+    mode: Literal["fake", "replay"]
+    comparative_complete: Literal[False]
+
+
+class PairedRunConfig(WireModel):
+    """Local input configuration, never a measured output artifact."""
+
+    mode: Literal["fake", "replay"]
+    caps: ProviderCaps
+    prompts: dict[str, Digest]
+    models: dict[str, str]
+    fixtures: dict[str, list[ProviderFixture]]
+    replay_files: dict[str, list[str]]
+    include_full_index: bool
+
+    @model_validator(mode="after")
+    def arm_keys(self) -> PairedRunConfig:
+        keys = {"extraction", "single_pass"}
+        if set(self.prompts) != keys or set(self.models) != keys:
+            raise ValueError("exact extraction and single_pass identities required")
+        if any(not model.strip() for model in self.models.values()):
+            raise ValueError("explicit model labels required")
+        if self.mode == "fake":
+            if set(self.fixtures) != keys or self.replay_files:
+                raise ValueError("fake config requires only both fixture arms")
+            values = self.fixtures.values()
+        else:
+            if set(self.replay_files) != keys or self.fixtures:
+                raise ValueError("replay config requires only both replay-file arms")
+            for paths in self.replay_files.values():
+                for path in paths:
+                    validate_relative_path(path)
+            values = self.replay_files.values()
+        if any(not 1 <= len(items) <= 2 for items in values):
+            raise ValueError("supply one or two explicit attempt fixtures per arm")
+        return self
