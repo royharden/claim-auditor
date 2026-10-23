@@ -60,6 +60,36 @@ checks content-addressed IDs, reopened-byte bindings and explicit operator human
 confirmation, retaining history and disagreements. Rulings are judgments, not
 verified source evidence, consensus, human gold or heldout custody certification.
 
+R02 adds closed `LiveAuthorization`, `LiveAtomProposal`, `LiveEvidencePointer`,
+`LiveProposalPayload`, `LiveUsage` and `LiveProviderResponse` for dormant provider
+source. These preserve owner admission and observation missingness independently
+of the unchanged fake/replay wire. Raw model atom coordinates are normalized into
+source-derived IDs and predicates by code. No live response or measured acceptance
+is created by constructing these types. See provider modes for activation limits.
+
+`ManualAnnotation` is the closed source-first inventory record. It requires
+annotation/source/family identities, `inventory:Inventory`, explicit
+`parent_spans:list[Span]`, actual annotator type/ID, aware recording time, nullable
+`action_id` and nullable `supersedes_annotation_id`. `Inventory.complete` is its
+sole coverage state; there is no parallel coverage flag or candidate-derived list.
+Agent rows cannot carry human actions; human rows need an actual action ID.
+The annotation service reopens full source, parent spans/qualifiers and raw block
+coverage, derives content identity and confirms real human action at write/export.
+
+The `annotation-record` CLI accepts a draft containing these same fields except
+the two service-computed annotation/supersession IDs. It validates through the
+existing central model and checks selected source identity; it does not introduce
+a duplicate draft wire, infer complete coverage or generate labels. `--previous`
+selects an explicit retained predecessor. `annotation-package --snapshot` is
+source-first; `--run` is separately labeled assisted review of an existing report.
+
+`ManualExportConfig` contains explicit claim-to-evidence path and latest ruling
+selection maps plus required nullable operator/action/date/rationale fields. Those
+action fields are all null for agent proposals or all explicit for a human export;
+actual human confirmation remains a separate service/CLI guard. Paths are portable
+and relative to the operator's selection file. It is operation input, never a
+second label record, coverage state, custody receipt or proof of adjudication.
+
 Source reference for strict models and serialization: [Pydantic configuration](https://pydantic.dev/docs/validation/latest/api/pydantic/config/)
 and [serialization](https://pydantic.dev/docs/validation/latest/concepts/serialization/),
 consulted 2026-10-23. No dependency installation or runtime conformance occurred.

@@ -1,0 +1,3 @@
+# Normal source is LF; fixtures/provenance bind their original exact bytes.
+* text=auto eol=lf
+fixtures/** -text

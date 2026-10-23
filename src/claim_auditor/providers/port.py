@@ -64,9 +64,9 @@ def _readme_span(request: ProviderRequest, span: Span) -> None:
             or not 0 <= span.start_byte < span.end_byte <= len(raw)
             or raw[span.start_byte:span.end_byte] != span.quote.encode("utf-8")):
         raise AuditError("invalid_proposal_span", "README span is not the exact admitted source bytes.")
-    # Match the existing sole citation resolver's LF-based display coordinates.
-    if (span.start_line != raw[:span.start_byte].count(b"\n") + 1
-            or span.end_line != raw[:span.end_byte - 1].count(b"\n") + 1):
+    from ..inventory.raw import RawDocument
+
+    if (span.start_line, span.end_line) != RawDocument.decode(raw).line_bounds(span.start_byte, span.end_byte):
         raise AuditError("invalid_proposal_span", "README line coordinates differ.")
 
 

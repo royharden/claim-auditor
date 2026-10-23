@@ -1,8 +1,10 @@
 # Typed provider source boundary
 
-Construction only: no provider or application execution has occurred. `live` is
-refused with `live_not_authorized`. No SDK, HTTP transport, credential lookup or
-fallback exists. Real live extraction and single-pass comparison remain unfinished.
+Construction only: no provider or application execution has occurred. Default
+`live` remains refused with `live_not_authorized`. R02 adds dormant concrete HTTPS
+and provider-adapter source for later owner activation. No SDK, credential lookup
+or silent fallback exists. Real live extraction and single-pass comparison remain
+unmeasured and require separately authorized activation.
 
 The paired runner uses the single port
 `providers.produce(request, *, transport, ledger) -> ProviderResponse`.
@@ -47,7 +49,8 @@ The historical field name `candidate_id` means the proposed Claim's source-deriv
 ID, not an input candidate. New exact README spans are permitted. IDs follow the
 existing source convention: sentence ID from snapshot/path/start/end, then claim
 ID from parent/ordinal and predicate ID from claim/fields. Quote/UTF-8 offsets,
-digest and LF display coordinates must agree. Duplicate source atoms/IDs and
+digest and raw LF/CRLF/bare-CR display coordinates must agree. Providers reuse
+`inventory.raw.RawDocument.line_bounds` as the coordinate authority. Duplicate source atoms/IDs and
 clipped surrounding qualifiers fail closed. The bounded static grammar validates
 the proposed predicate from the quoted text, preserving negation, condition and
 qualifiers; unsupported semantic mappings must use the grammar's explicit unknown
@@ -70,3 +73,91 @@ benchmark or runtime acceptance.
 
 The older `audit --mode replay` envelope remains a separate inventory-preserving
 legacy path. It neither implements nor replaces this raw-packet paired comparison.
+
+`paired-input --packet PATH --out NEW_FILE` authors a closed fake configuration
+with exact per-arm request identities. Both fixture outcomes are explicitly
+`fixture_not_supplied`, with null simulated usage and no proposed atoms. It is an
+operator input template, not synthetic successful inference, predictions or a
+measured result. `paired-run` preserves those failures. Real fixture proposals or
+explicit replay files must be independently supplied; editing request identities
+without updating the matching fixture is refused. Single-pass uses one logical
+request in its identity, matching the paired runner's declared baseline policy.
+
+## Dormant future-live source
+
+`providers.produce_live(request, *, system_prompt, adapter, ledger,
+authorization=None, transport=None)` refuses absent/disabled authorization before
+transport activity. `OpenAICompatibleAdapter` builds Chat Completions JSON;
+`AnthropicAdapter` builds Messages JSON. Neither performs I/O. Model identity and
+endpoint come from the owner, independently of packet text. System prompt bytes
+must match the request's prompt digest. Tool invocation is unavailable. Existing
+`audit --mode live` still refuses; no CLI flag bypasses admission.
+
+`LiveAuthorization` requires enabled state, owner/action identity, expiry, provider,
+exact HTTPS endpoint, full request/payload/snapshot digests, explicit allowed source
+paths, input-token upper bound, tokenizer and worst-case-cost receipts, request and
+response byte caps, and explicit nullable Anthropic version. Receipts are owner
+attestations; strings alone do not establish real consent, tokenization or pricing.
+Future operators must authorize the actual data scope, model, costs and transport.
+No price table or estimated settled cost is built in.
+
+`HTTPJSONTransport(*, authorization, allowed_endpoints, credential_headers,
+owner_activation=False)` performs no I/O in its constructor. Actual operation also
+requires explicit owner activation and a current exact endpoint/payload grant.
+Credentials must be injected by a future trusted caller; the source does not look
+up keys, files, accounts, proxies or environment values. Credential headers are
+never serialized into attempt records or errors. Only HTTPS with verified TLS is
+implemented; owner endpoints must use `/v1/chat/completions` or `/v1/messages`.
+There are no redirects, cookies, compression expansion or hidden retries.
+
+Each `post_json` owns a spawned trusted one-shot worker, bounds response bytes and
+the full wall deadline including DNS/TLS/header/body waits, and terminates only
+that worker on timeout. All socket/read work also uses the remaining deadline.
+No worker was spawned during construction. Run the future installed tool from a
+trusted directory with trusted Python import paths; target files are never modules.
+Windows spawn, cleanup, TLS/DNS, hostile responses and actual deadline enforcement
+remain unverified until authorized runtime activation.
+
+This additional trusted HTTP worker is an explicit design delta from the promoted
+plan's Git-acquisition/parser-worker process allowlist. Its future activation needs
+owner process/containment review; source authoring is not a no-execution proof or
+approval to exercise the new process. No target-controlled executable is selected.
+
+`JSONReply(endpoint, status_code, body, elapsed_seconds, physical_attempts,
+settled_cost_usd, cost_receipt)` is an internal immutable transport result.
+`StaticJSONTransport(*, authorization_id, replies)` is a separately labeled inert
+fixture source. A reply with another endpoint, more than one physical attempt,
+excess bytes or late elapsed time fails. Unknown actual usage/cost remains unknown;
+the real HTTP implementation cannot invent an invoice from token counts and
+therefore returns null monetary settlement. The pending ledger blocks another
+attempt until externally reconciled. No test fixture is a live observation.
+
+`LiveProposalPayload` contains closed `atoms` with start/end UTF-8 bytes, exact quote,
+kind, nullable relation and explicit evidence pointers. Models do not compute IDs,
+hashes or final findings. Code derives those identities and predicate fields,
+validates proposed kinds/qualifiers and reuses the same bounded span authority.
+Evidence is confined to packet excerpts, then reopened through the sole resolver
+by the inference consumer. Unsupported semantic mapping remains unknown/invalid.
+`LiveProviderResponse` retains attempts, usage provenance (`fixture` versus
+`provider_reported`), unknowns and `comparative_complete=False`.
+
+Both adapters accept only normal textual completion, reject tool-use/refusal/
+truncation and compare returned model identity exactly with the declared model.
+OpenAI-compatible usage retains missing prompt/completion counts; Anthropic input
+accounting requires explicit input/cache creation/cache read counts, preserving
+unknowns when omitted. HTTP/protocol errors never trigger a hidden fallback.
+A retry requires settled usage within the same shared ledger and explicit retry
+allowance. Default HTTP cost remains unknown, so automatic retry cannot occur on
+an unaccounted failure. Actual provider schema/model compatibility and rate/token
+receipts must be checked at activation.
+
+Official references consulted for source construction on 2026-10-23:
+[OpenAI Chat Completions](https://developers.openai.com/api/reference/cli/resources/chat/subresources/completions/methods/create)
+documents JSON-schema response format, completion caps and prompt/completion usage;
+[OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
+describes schema constraints/refusals. Local validation remains mandatory.
+[Anthropic Messages](https://platform.claude.com/docs/en/api/messages/create)
+documents model/messages/max_tokens and cache-aware usage;
+[Anthropic stop reasons](https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons)
+distinguishes completed turns from truncation, tool use and refusal. These docs are
+not proof any model or account has accepted the constructed requests.

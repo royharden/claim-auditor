@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from pydantic import ValidationError
 
-from .contracts import AuditError, canonical_json
+from .contracts import AuditError, ManualAnnotation, canonical_json
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -47,8 +48,11 @@ def _parser() -> argparse.ArgumentParser:
     paired.add_argument("--snapshot", type=Path, required=True)
     paired.add_argument("--config", type=Path, required=True)
     paired.add_argument("--out", type=Path, required=True)
-    annotation = commands.add_parser("annotation-package", help="Prepare a DEV-only blank operator review package from a verified report.")
-    annotation.add_argument("--run", type=Path, required=True)
+    annotation = commands.add_parser("annotation-package", help="Prepare full source-first review (--snapshot) or separately labeled assisted review (--run).")
+    annotation_sources = annotation.add_mutually_exclusive_group(required=True)
+    annotation_sources.add_argument("--snapshot", type=Path)
+    annotation_sources.add_argument("--run", type=Path)
+    annotation.add_argument("--readme", default="README.md")
     annotation.add_argument("--family-id", required=True)
     annotation.add_argument("--out", type=Path, required=True)
     ruling_import = commands.add_parser("rulings-import", help="Append validated judgments; never manufacture human review.")
@@ -59,12 +63,91 @@ def _parser() -> argparse.ArgumentParser:
     ruling_export = commands.add_parser("rulings-export", help="Export full append-only ruling history to a fresh file.")
     ruling_export.add_argument("--ledger", type=Path, required=True)
     ruling_export.add_argument("--out", type=Path, required=True)
+    paired_verify = commands.add_parser("paired-verify", help="Verify closed paired artifacts/citations; absent external pin is self-consistency only.")
+    paired_verify.add_argument("--run", type=Path, required=True)
+    paired_verify.add_argument("--snapshot", type=Path, required=True)
+    paired_verify.add_argument("--manifest-digest")
+    paired_score = commands.add_parser("paired-score", help="Verify paired inference before reading separate gold; fresh output required.")
+    paired_score.add_argument("--run", type=Path, required=True)
+    paired_score.add_argument("--snapshot", type=Path, required=True)
+    paired_score.add_argument("--gold", type=Path, required=True)
+    paired_score.add_argument("--out", type=Path, required=True)
+    paired_score.add_argument("--manifest-digest")
+    dev_stage = commands.add_parser("dev-stage", help="Stage disclosed DEV source with explicit provenance/access receipts; never heldout admission.")
+    dev_stage.add_argument("--source", type=Path, required=True)
+    dev_stage.add_argument("--out", type=Path, required=True)
+    dev_stage.add_argument("--alias", required=True, help="Opaque f- plus 16 lowercase hexadecimal digits.")
+    dev_stage.add_argument("--provenance", type=Path, required=True)
+    dev_stage.add_argument("--access-receipt", type=Path, required=True)
+    dev_export = commands.add_parser("dev-export", help="Verify a pinned DEV seal and export only source to fresh output.")
+    dev_export.add_argument("--stage", type=Path, required=True)
+    dev_export.add_argument("--seal-digest", required=True)
+    dev_export.add_argument("--out", type=Path, required=True)
+    paired_input = commands.add_parser("paired-input", help="Write a fresh fake config template with explicit missing-fixture failures, no model output.")
+    paired_input.add_argument("--packet", type=Path, required=True)
+    paired_input.add_argument("--out", type=Path, required=True)
+    dev_packet = commands.add_parser("dev-packet", help="Prepare a DEV-only source packet without inventing a research LOCK or custody.")
+    dev_packet.add_argument("--snapshot", type=Path, required=True)
+    dev_packet.add_argument("--out", type=Path, required=True)
+    annotation_record = commands.add_parser("annotation-record", help="Record an explicitly authored source-first inventory, never candidate-derived human gold.")
+    annotation_record.add_argument("--snapshot", type=Path, required=True)
+    annotation_record.add_argument("--input", type=Path, required=True)
+    annotation_record.add_argument("--out", type=Path, required=True)
+    annotation_record.add_argument("--previous", type=Path)
+    annotation_record.add_argument("--confirm-human-action", action="store_true")
+    annotation_ruling = commands.add_parser("annotation-ruling", help="Bind an explicit judgment/evidence bundle to a source-first manual atom.")
+    annotation_ruling.add_argument("--snapshot", type=Path, required=True)
+    annotation_ruling.add_argument("--annotation", type=Path, required=True)
+    annotation_ruling.add_argument("--ledger", type=Path, required=True)
+    annotation_ruling.add_argument("--atom", type=Path, required=True)
+    annotation_ruling.add_argument("--evidence", type=Path, required=True)
+    annotation_ruling.add_argument("--recorded-at", required=True)
+    annotation_ruling.add_argument("--human-action-id")
+    annotation_ruling.add_argument("--supersedes-ruling-id")
+    annotation_ruling.add_argument("--confirm-human-action", action="store_true")
+    annotation_export = commands.add_parser("annotation-export", help="Export explicitly selected agent proposals; human gold needs separate explicit action.")
+    annotation_export.add_argument("--snapshot", type=Path, required=True)
+    annotation_export.add_argument("--annotation", type=Path, required=True)
+    annotation_export.add_argument("--ledger", type=Path, required=True)
+    annotation_export.add_argument("--selection", type=Path, required=True)
+    annotation_export.add_argument("--out", type=Path, required=True)
+    annotation_export.add_argument("--human-gold", action="store_true")
+    annotation_export.add_argument("--confirm-human-action", action="store_true")
     return parser
 
 
 def _exit_for_manifest(manifest: object) -> int:
     state = getattr(manifest, "state")
     return {"complete": 0, "failed_input": 2, "incomplete": 3, "failed_integrity": 4}.get(state, 3)
+
+
+def _manual_draft(snapshot_root: Path, path: Path) -> ManualAnnotation:
+    """Validate draft inputs through the sole ManualAnnotation wire authority.
+
+    The service supplies content-addressed ID/supersession when recording. No
+    status, completion observation, identity or action is inferred in this helper.
+    """
+    from .snapshot import load_snapshot
+    from .snapshot.safeio import read_ordinary
+
+    def unique(pairs: list[tuple[str, object]]) -> dict:
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate draft JSON field")
+            result[key] = value
+        return result
+
+    fields = json.loads(read_ordinary(path.parent, path.name, cap=4 * 1024 * 1024), object_pairs_hook=unique)
+    required = set(ManualAnnotation.model_fields) - {"annotation_id", "supersedes_annotation_id"}
+    if not isinstance(fields, dict) or set(fields) != required:
+        raise AuditError("invalid_manual_draft", "Supply exactly ManualAnnotation fields except service-owned annotation_id and supersedes_annotation_id.")
+    draft = ManualAnnotation.model_validate_json(canonical_json({
+        **fields, "annotation_id": "draft:not-recorded", "supersedes_annotation_id": None,
+    }))
+    if draft.source_manifest_digest != load_snapshot(snapshot_root).manifest_digest:
+        raise AuditError("manual_source_mismatch", "Draft source differs from the selected frozen snapshot.", 4)
+    return draft
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -152,11 +235,21 @@ def main(argv: list[str] | None = None) -> int:
             print("fake/replay source assembly; runtime unverified; not measured / comparative acceptance incomplete", file=sys.stderr)
             return 3
         if args.command == "annotation-package":
-            from .evaluation.rulings import prepare_annotation_package
+            if args.snapshot is not None:
+                from .evaluation.annotation import prepare_source_annotation
 
-            digest = prepare_annotation_package(args.run, args.out, family_id=args.family_id)
+                digest = prepare_source_annotation(args.snapshot, args.out, family_id=args.family_id,
+                                                   readme_path=args.readme)
+                review_mode = "source_first"
+            else:
+                from .evaluation.rulings import prepare_annotation_package
+
+                if args.readme != "README.md":
+                    raise AuditError("unexpected_readme_option", "Assisted review uses the verified report's own README identity.")
+                digest = prepare_annotation_package(args.run, args.out, family_id=args.family_id)
+                review_mode = "report_assisted"
             print(canonical_json({"package_digest": digest, "human_review_performed": False,
-                                  "gold_created": False}).decode("utf-8"))
+                                  "gold_created": False, "review_mode": review_mode}).decode("utf-8"))
             return 0
         if args.command == "rulings-import":
             from .evaluation.rulings import import_rulings
@@ -169,11 +262,116 @@ def main(argv: list[str] | None = None) -> int:
 
             print(canonical_json({"export_digest": export_rulings(args.ledger, args.out)}).decode("utf-8"))
             return 0
+        if args.command == "paired-verify":
+            from .evaluation import verify_paired
+
+            result = verify_paired(args.run, args.snapshot, manifest_digest=args.manifest_digest)
+            print(canonical_json({"manifest_digest": result["manifest_digest"],
+                                  "externally_pinned": args.manifest_digest is not None,
+                                  "comparative_complete": False,
+                                  "human_adjudicated": False}).decode("utf-8"))
+            return 0
+        if args.command == "paired-score":
+            from .evaluation import score_paired
+
+            result = score_paired(args.run, args.snapshot, args.gold, args.out,
+                                  manifest_digest=args.manifest_digest)
+            print(canonical_json(result).decode("utf-8"))
+            print("scoring does not complete actual live/human comparative acceptance", file=sys.stderr)
+            return 3
+        if args.command == "dev-stage":
+            from .evaluation.custody import stage_dev_family
+
+            digest = stage_dev_family(args.source, args.out, alias=args.alias,
+                                      provenance_path=args.provenance,
+                                      access_receipt_path=args.access_receipt,
+                                      designation="DEV_ONLY", admission_requested=False)
+            print(canonical_json({"seal_digest": digest, "designation": "DEV_ONLY",
+                                  "custody_verified": False, "heldout": False,
+                                  "admitted": False}).decode("utf-8"))
+            return 0
+        if args.command == "dev-export":
+            from .evaluation.custody import export_dev_source
+
+            digest = export_dev_source(args.stage, args.out, expected_seal_digest=args.seal_digest)
+            print(canonical_json({"source_manifest_digest": digest, "designation": "DEV_ONLY",
+                                  "custody_verified": False, "heldout": False,
+                                  "admitted": False}).decode("utf-8"))
+            return 0
+        if args.command == "paired-input":
+            from .providers.config import write_fake_config
+
+            write_fake_config(args.packet, args.out)
+            print(canonical_json({"mode": "fake", "fixture_status": "fixture_not_supplied",
+                                  "predictions_created": False, "comparative_complete": False}).decode("utf-8"))
+            return 0
+        if args.command == "dev-packet":
+            from .evaluation.packet import prepare_dev_packet
+
+            packet = prepare_dev_packet(args.snapshot, args.out)
+            print(canonical_json({"packet_digest": packet.packet_digest, "designation": "DEV_ONLY",
+                                  "source_only": True, "admitted": False,
+                                  "comparative_complete": False}).decode("utf-8"))
+            return 0
+        if args.command == "annotation-record":
+            from .evaluation.annotation import record_manual_annotation
+
+            draft = _manual_draft(args.snapshot, args.input)
+            result = record_manual_annotation(args.snapshot, args.out, family_id=draft.family_id,
+                                               inventory=draft.inventory, parent_spans=draft.parent_spans,
+                                               annotator_type=draft.annotator_type, annotator_id=draft.annotator_id,
+                                               recorded_at=draft.recorded_at, action_id=draft.action_id,
+                                               previous_path=args.previous,
+                                               human_confirmation=args.confirm_human_action)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if args.command == "annotation-ruling":
+            from .contracts import GoldAtom
+            from .evaluation.annotation import record_manual_ruling
+            from .snapshot.safeio import read_ordinary
+
+            atom = GoldAtom.model_validate_json(read_ordinary(args.atom.parent, args.atom.name, cap=256 * 1024))
+            row = record_manual_ruling(args.snapshot, args.annotation, args.ledger, atom=atom,
+                                       evidence_path=args.evidence, recorded_at=args.recorded_at,
+                                       human_action_id=args.human_action_id,
+                                       supersedes_ruling_id=args.supersedes_ruling_id,
+                                       human_confirmation=args.confirm_human_action)
+            print(canonical_json(row).decode("utf-8"))
+            return 0
+        if args.command == "annotation-export":
+            from .contracts import ManualExportConfig
+            from .evaluation.annotation import export_manual_gold, export_manual_proposals
+            from .snapshot.safeio import read_ordinary
+
+            config = ManualExportConfig.model_validate_json(read_ordinary(args.selection.parent, args.selection.name, cap=4 * 1024 * 1024))
+            evidence = {key: args.selection.parent.joinpath(*value.split("/"))
+                        for key, value in config.evidence_files.items()}
+            if args.human_gold:
+                if (config.operator_id is None or config.action_id is None or config.recorded_at is None
+                        or config.adjudication_rationale is None):
+                    raise AuditError("human_action_required", "Human export requires explicit operator/action/date/rationale inputs.")
+                digest = export_manual_gold(args.snapshot, args.annotation, args.ledger, args.out,
+                                             evidence_files=evidence, ruling_ids=config.ruling_ids,
+                                             operator_id=config.operator_id, action_id=config.action_id,
+                                             recorded_at=config.recorded_at,
+                                             adjudication_rationale=config.adjudication_rationale,
+                                             human_confirmation=args.confirm_human_action)
+                release_kind = "human_confirmed_gold"
+            else:
+                if args.confirm_human_action or config.operator_id is not None:
+                    raise AuditError("unexpected_human_export_fields", "Proposal export must use null human action fields and no human confirmation flag.")
+                digest = export_manual_proposals(args.snapshot, args.annotation, args.ledger, args.out,
+                                                  evidence_files=evidence, ruling_ids=config.ruling_ids)
+                release_kind = "agent_preliminary_proposals"
+            print(canonical_json({"export_digest": digest, "mode": release_kind,
+                                  "custody_verified": False, "heldout": False,
+                                  "admitted": False, "comparative_complete": False}).decode("utf-8"))
+            return 0
         raise AuditError("unknown_command", "No handler for requested command.")
     except AuditError as exc:
         print(canonical_json({"error": exc.reason, "detail": exc.detail}).decode("utf-8"), file=sys.stderr)
         return exc.exit_code
-    except (ValidationError, ValueError, UnicodeError, OSError) as exc:
+    except (ValidationError, ValueError, UnicodeError, OSError, RecursionError, MemoryError) as exc:
         print(canonical_json({"error": "invalid_input", "detail": str(exc)}).decode("utf-8"), file=sys.stderr)
         return 2
 

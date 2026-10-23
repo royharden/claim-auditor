@@ -638,3 +638,142 @@ class PairedRunConfig(WireModel):
         if any(not 1 <= len(items) <= 2 for items in values):
             raise ValueError("supply one or two explicit attempt fixtures per arm")
         return self
+
+
+class LiveEvidencePointer(WireModel):
+    path: str
+    start_byte: int = Field(ge=0)
+    end_byte: int = Field(gt=0)
+    start_line: int = Field(ge=1)
+    end_line: int = Field(ge=1)
+    quote: str = Field(min_length=1, max_length=1024)
+
+    _path = field_validator("path")(validate_relative_path)
+
+
+class LiveAtomProposal(WireModel):
+    start_byte: int = Field(ge=0)
+    end_byte: int = Field(gt=0)
+    quote: str = Field(min_length=1, max_length=131072)
+    kind: ClaimKind
+    relation: Relation | None
+    evidence: list[LiveEvidencePointer] = Field(max_length=200)
+
+
+class LiveProposalPayload(WireModel):
+    """Model supplies coordinates/content, never authoritative IDs or verdicts."""
+
+    atoms: list[LiveAtomProposal] = Field(max_length=200)
+
+
+class LiveAuthorization(WireModel):
+    enabled: bool
+    authorization_id: str = Field(min_length=1)
+    authorized_by: str = Field(min_length=1)
+    expires_at: str
+    provider: Literal["openai_compatible", "anthropic"]
+    endpoint: str
+    request_digest: Digest
+    payload_digest: Digest
+    snapshot_manifest_digest: Digest
+    allowed_paths: list[str]
+    input_token_upper_bound: int = Field(gt=0)
+    tokenizer_receipt: str = Field(min_length=1)
+    worst_case_cost_receipt: str = Field(min_length=1)
+    max_request_bytes: int = Field(gt=0, le=1024 * 1024)
+    max_response_bytes: int = Field(gt=0, le=2 * 1024 * 1024)
+    anthropic_version: str | None
+
+    @field_validator("allowed_paths")
+    @classmethod
+    def paths(cls, value: list[str]) -> list[str]:
+        if not value or len(value) != len(set(value)):
+            raise ValueError("authorized scope must be explicit and unique")
+        for path in value:
+            validate_relative_path(path)
+        return value
+
+
+class LiveUsage(WireModel):
+    origin: Literal["provider_reported", "fixture"]
+    resolved_model: str | None
+    response_id: str | None
+    input_tokens: int | None = Field(ge=0)
+    output_tokens: int | None = Field(ge=0)
+    cost_usd: float | None = Field(ge=0)
+    cost_receipt: str | None
+    elapsed_seconds: float | None = Field(ge=0)
+
+
+class LiveProviderResponse(WireModel):
+    request_digest: Digest
+    payload_digest: Digest
+    authorization_id: str
+    status: Literal["proposed", "abstention_screened", "invalid_output", "execution_failure", "incomplete"]
+    proposals: list[ProviderProposal]
+    attempts: list[Attempt]
+    usage: list[LiveUsage]
+    error: str | None
+    mode: Literal["live", "fake"]
+    comparative_complete: Literal[False]
+
+
+class ManualAnnotation(WireModel):
+    """Manual source inventory; service reopens bytes and confirms real actions."""
+
+    annotation_id: str
+    source_manifest_digest: Digest
+    family_id: str
+    inventory: Inventory
+    parent_spans: list[Span]
+    annotator_type: Literal["agent", "human"]
+    annotator_id: str
+    recorded_at: str
+    action_id: str | None
+    supersedes_annotation_id: str | None
+
+    @model_validator(mode="after")
+    def attribution(self) -> ManualAnnotation:
+        from datetime import datetime
+
+        if not all(value.strip() for value in (self.annotation_id, self.family_id, self.annotator_id)):
+            raise ValueError("manual annotation and annotator identities must be explicit")
+        if datetime.fromisoformat(self.recorded_at.replace("Z", "+00:00")).tzinfo is None:
+            raise ValueError("manual annotation timestamp must be timezone aware")
+        if self.annotator_type == "agent" and self.action_id is not None:
+            raise ValueError("agent annotation cannot carry a human action")
+        if self.annotator_type == "human" and not (self.action_id or "").strip():
+            raise ValueError("human annotation requires explicit actual-action identity")
+        if self.supersedes_annotation_id == self.annotation_id:
+            raise ValueError("annotation cannot supersede itself")
+        return self
+
+
+class ManualExportConfig(WireModel):
+    """Explicit operator selections; never labels, consensus or action evidence."""
+
+    evidence_files: dict[str, str]
+    ruling_ids: dict[str, str]
+    operator_id: str | None
+    action_id: str | None
+    recorded_at: str | None
+    adjudication_rationale: str | None
+
+    @model_validator(mode="after")
+    def selections(self) -> ManualExportConfig:
+        from datetime import datetime
+
+        if not self.ruling_ids or any(not key.strip() or not value.strip() for key, value in self.ruling_ids.items()):
+            raise ValueError("explicit nonempty claim-to-ruling selections required")
+        if any(not key.strip() for key in self.evidence_files):
+            raise ValueError("evidence must be keyed by exact claim identity")
+        for path in self.evidence_files.values():
+            validate_relative_path(path)
+        values = (self.operator_id, self.action_id, self.recorded_at, self.adjudication_rationale)
+        if any(value is not None for value in values):
+            if any(value is None or not value.strip() for value in values):
+                raise ValueError("human export action fields must all be explicit or all null for proposals")
+            assert self.recorded_at is not None
+            if datetime.fromisoformat(self.recorded_at.replace("Z", "+00:00")).tzinfo is None:
+                raise ValueError("export action timestamp must be timezone aware")
+        return self

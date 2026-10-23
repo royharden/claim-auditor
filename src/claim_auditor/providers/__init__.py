@@ -7,8 +7,12 @@ from pathlib import Path
 from ..contracts import AuditError, Claim, POLICY_VERSION, canonical_json, sha256
 from ..screen import screen_text
 from .port import FakeTransport, ReplayTransport, produce, request_digest
+from .http_json import HTTPJSONTransport, JSONReply, StaticJSONTransport
+from .live import AnthropicAdapter, OpenAICompatibleAdapter, produce_live
 
 __all__ = ["FakeTransport", "ReplayTransport", "produce", "request_digest", "load_replay", "require_no_live"]
+__all__ += ["HTTPJSONTransport", "JSONReply", "StaticJSONTransport", "AnthropicAdapter",
+            "OpenAICompatibleAdapter", "produce_live"]
 
 
 def require_no_live(mode: str) -> None:

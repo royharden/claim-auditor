@@ -10,6 +10,13 @@ installed or locked (`uv.lock` is not yet present), the CLI/demo has not run, an
 run. Human-adjudicated evaluation is not measured; comparative acceptance is
 incomplete. Live provider calls are disabled.
 
+R02 includes dormant OpenAI-compatible/Anthropic adapter and bounded stdlib HTTPS
+transport **source**. Default live execution remains refused. No transport, worker,
+provider or credential has been exercised; later owner activation must bind exact
+data/model/prompt/endpoint/budget identities and provide real authorized receipts.
+See [provider modes](docs/provider-modes.md) for the source interfaces and unknown
+usage/cost handling. There is no live-enabling CLI shortcut.
+
 CA10 GitHub workflow source and execution are deferred until Dirty Mode closes;
 no CI or deployment scaffolding is included in this construction baseline.
 
@@ -57,26 +64,27 @@ does not mean the repository is correct.
 - `providers`, `screen`, `accounting`: explicit replay/disabled-live boundary,
   conservative model-input hold and bounded durable reservation port.
 
-W2 adds typed fake/replay extraction and single-pass proposal source, paired-arm
-orchestration, DEV-only annotation packages and append-only ruling operations.
-These paths have **not run**. New CLI entrypoints for later authorized activation:
+The [operator quickstart](docs/quickstart.md) gives the future command sequence;
+[construction notes](docs/release-notes.md) record what remains unverified.
 
-```console
-uv run claim-auditor paired-run --packet results-local/prepared/packet.json --snapshot results-local/snapshot-001 --config paired-input.json --out results-local/paired-001
-uv run claim-auditor annotation-package --run results-local/audit-001 --family-id dev-example --out results-local/annotation-001
-uv run claim-auditor rulings-import --ledger results-local/rulings.jsonl --input operator-rulings.jsonl
-uv run claim-auditor rulings-export --ledger results-local/rulings.jsonl --out results-local/rulings-export.jsonl
-```
+| Operator purpose | Source entrypoints |
+|---|---|
+| Freeze and audit owned source | `snapshot`, `audit`, `demo`, `verify-report` |
+| Disclosed DEV source packet and fake input configuration | `dev-packet`, `paired-input` |
+| Equal-packet fake/replay assembly and closed artifacts | `paired-run`, `paired-verify`, `paired-score` |
+| DEV source staging with explicit provenance and pinned seal | `dev-stage`, `dev-export` |
+| Full source-first review or distinct report-assisted review | `annotation-package --snapshot` or `--run` |
+| Explicit manual inventory, judgments and selected exports | `annotation-record`, `annotation-ruling`, `annotation-export` |
+| Append-only judgment history | `rulings-import`, `rulings-export` |
 
-`paired-input.json` must follow closed `PairedRunConfig`; it provides both fake
-fixture arms or explicit relative replay paths, declared caps and prompt/model
-identities. See [provider modes](docs/provider-modes.md). `paired-run` returns 3
-because fake/replay assembly cannot complete actual comparative acceptance.
-Fixture usage is simulated; live observations remain unknown. Annotation packages
-contain source and blank review instructions, with no prepopulated human judgments.
-Human imports additionally require the operator's `--confirm-human-action` after
-actual human review with explicit action IDs. Agent judgments never become human
-gold; importing records does not establish correctness or consensus.
+These paths have **not run**. Fake input templates contain explicit missing-fixture
+failures, never passing predictions or measured model output. Paired scoring reads
+separate labels only after inference verification; an unpinned verification is
+self-consistency only. Manual inventory is independent of candidate-extractor
+omissions. Human attribution requires real operator action and explicit IDs;
+agent judgments never become human gold. DEV seals bind bytes, never heldout
+admission, enforced custody or blindness. See [provider modes](docs/provider-modes.md)
+for strict configuration and unknown cost/usage handling.
 
 ## Evidence and measurement
 
@@ -113,3 +121,7 @@ This source was authored by coding agents under explicit static-only Dirty Mode.
 Focused source inspection and syntax parsing are the only permitted checks for
 this phase. Nothing has been pushed, published, deployed or connected to real
 accounts. MIT licensed; no third-party project code was vendored.
+
+Normal source uses LF checkout policy. `fixtures/**` is byte-preserving (`-text`)
+because provenance binds original bytes. No renormalization or fixture rewrite was
+performed for this policy; later checkout/digest conformance remains unverified.
