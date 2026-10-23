@@ -1,0 +1,12 @@
+[project]
+name = "claim-auditor-owned-input"
+version = "0.1.0"
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = ["pydantic>=2,<3"]
+
+[project.scripts]
+owned-greeting = "tiny:greet"
+
+[tool.owned]
+attempts = 3
