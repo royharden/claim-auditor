@@ -16,7 +16,10 @@ def create_demo_source(out: Path) -> Path:
             "# Owned demo\n\n"
             "The function `present` is declared in module `sample`.\n\n"
             "The function `invented` is declared in module `sample`.\n\n"
-            "The service handles 10000 requests per second.\n"
+            "The service handles 10000 requests per second.\n\n"
+            "The function `present` has literal default `value=3` in module `sample`.\n\n"
+            "The function `present` returns `3` for every input.\n\n"
+            "The function `present` has literal default `value=30` in module `sample`.\n"
         ).encode("utf-8"),
         "sample.py": b'def present(value: int = 3) -> int:\n    return value\n',
         "pyproject.toml": b'[project]\nname = "owned-claim-demo"\nversion = "0.1.0"\nrequires-python = ">=3.12"\n',
