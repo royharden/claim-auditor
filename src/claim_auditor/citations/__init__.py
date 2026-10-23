@@ -10,6 +10,7 @@ from claim_auditor.contracts import (
 )
 from claim_auditor.index import INDEX_VERSION, PARSER_VERSION, StaticIndex, build_index, resolve
 from claim_auditor.patterns import PATTERN_VERSION
+from claim_auditor.inventory.raw import RawDocument
 from claim_auditor.snapshot import load_snapshot, read_source
 from claim_auditor.snapshot.safeio import read_ordinary, validated_path
 
@@ -29,8 +30,7 @@ def validate_span(snapshot: Snapshot, root: Path, span: Span) -> None:
         text = quoted.decode("utf-8", "strict")
     except UnicodeDecodeError as error:
         raise AuditError("citation_utf8_boundary", span.path, 4) from error
-    start_line = raw[:span.start_byte].count(b"\n") + 1
-    end_line = raw[:max(span.start_byte, span.end_byte - 1)].count(b"\n") + 1
+    start_line, end_line = RawDocument.decode(raw).line_bounds(span.start_byte, span.end_byte)
     if (text != span.quote or sha256(quoted) != span.quote_sha256 or
             start_line != span.start_line or end_line != span.end_line):
         raise AuditError("citation_quote_or_lines", span.path, 4)
