@@ -4,5 +4,6 @@ from claim_auditor.evaluation.packet import PACKET_VERSION, code_digest, prepare
 from claim_auditor.evaluation.scoring import MATCHER_VERSION, score_predictions, score_rows
 from claim_auditor.evaluation.baseline import BASELINE_VERSION, run_packet_grep
 from claim_auditor.evaluation.measurements import family_bootstrap, summarize_attempts
+from claim_auditor.evaluation.runner import RUNNER_VERSION, run_paired
 
-__all__ = ["BASELINE_VERSION", "MATCHER_VERSION", "PACKET_VERSION", "code_digest", "family_bootstrap", "prepare_evaluation", "run_packet_grep", "score_predictions", "score_rows", "summarize_attempts"]
+__all__ = ["BASELINE_VERSION", "MATCHER_VERSION", "PACKET_VERSION", "RUNNER_VERSION", "code_digest", "family_bootstrap", "prepare_evaluation", "run_packet_grep", "run_paired", "score_predictions", "score_rows", "summarize_attempts"]
