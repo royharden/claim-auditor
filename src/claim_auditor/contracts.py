@@ -403,6 +403,30 @@ class ScoredItem(WireModel):
     actual: str | None
 
 
+class BootstrapInterval(WireModel):
+    metric: str
+    low: float | None
+    high: float | None
+    families: int = Field(ge=0)
+    resamples: int = Field(ge=0)
+    seed: int
+    status: Literal["exploratory", "inconclusive"]
+
+
+class AttemptSummary(WireModel):
+    attempts: int = Field(ge=0)
+    input_tokens: int | None
+    output_tokens: int | None
+    cost_usd: float | None
+    reported_known_cost_usd: float = Field(ge=0)
+    known_cost_attempts: int = Field(ge=0)
+    unknown_cost_attempts: int = Field(ge=0)
+    median_seconds: float | None
+    p95_seconds: float | None
+    unknown_latency_attempts: int = Field(ge=0)
+    mode_counts: dict[str, int]
+
+
 class EvaluationResult(WireModel):
     schema_version: Literal["claim-auditor/1"] = SCHEMA_VERSION
     matcher_version: str
@@ -412,6 +436,16 @@ class EvaluationResult(WireModel):
     metrics: dict[str, float | None]
     confusion: dict[str, dict[str, int]]
     items: list[ScoredItem]
+    intervals: dict[str, BootstrapInterval]
+    attempt_summary: AttemptSummary | None
+    limitations: list[str]
+
+
+class PacketBaseline(WireModel):
+    mode: Literal["packet_grep"]
+    packet_digest: Digest
+    predictions: list[PredictionRow]
+    evidence: list[Evidence]
     limitations: list[str]
 
 
