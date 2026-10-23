@@ -1,0 +1,33 @@
+{
+  "dataset_id": "UNADMITTED_TEMPLATE",
+  "mode": "dev_descriptive",
+  "admitted": false,
+  "admitted_by": null,
+  "admitted_at": null,
+  "protocol_id": "FILL_WITH_PREDECLARED_STUDY_ID",
+  "taxonomy_version": null,
+  "matcher_version": null,
+  "packet_version": null,
+  "runner_version": null,
+  "packet_fact_version": null,
+  "parser_version": null,
+  "code_digest": null,
+  "required_arms": [
+    "packet_candidate",
+    "packet_grep",
+    "live_extraction",
+    "live_single_pass",
+    "product_full_index"
+  ],
+  "provider_models": {
+    "live_extraction": "FILL_WITH_EXACT_DECLARED_MODEL",
+    "live_single_pass": "FILL_WITH_EXACT_DECLARED_MODEL"
+  },
+  "prompt_digests": {
+    "live_extraction": null,
+    "live_single_pass": null
+  },
+  "caps": null,
+  "human_review_receipt": null,
+  "cases": []
+}

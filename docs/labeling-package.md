@@ -10,9 +10,9 @@ Before heldout access, the independent owner must deliver a digest-only seal, ri
 
 The source construction includes schemas, descriptive scoring and an append-only local annotation service with an operator package preparer. None has been runtime-verified in this phase. Do not put fabricated gold, fake adjudication identities or made-up benchmark numbers into the repository. Required live extraction, single-pass model comparison, real Action artifact and independent product acceptance remain outstanding.
 
-## Operator procedure after activation
+## Assisted candidate-review procedure after activation
 
-The six original DEV families are described in [corpus-dev.md](corpus-dev.md). Use only a family's `source/` as audit input; keep provenance/review prompts and later judgments out of inference. Start with original README bytes and account for every assertion, including any extractor omission; an extracted inventory alone cannot establish complete annotation coverage.
+This optional run-based package assists review of candidate findings. It cannot establish a complete manual atomic inventory or extraction-recall denominator. Use the source-first procedure below for that purpose. The twelve original DEV families/120 authored statements are described in [corpus-dev.md](corpus-dev.md). Use only a family's `source/` as audit input; keep provenance/review prompts and later judgments out of inference. All statements still need real annotation.
 
 The source API below is intended for a later authorized local operator session. These are proposed calls, not commands run or evidence of a completed review. CLI wiring is owned by the shared CLI maintainer and must follow the published signatures.
 
@@ -26,3 +26,64 @@ The source API below is intended for a later authorized local operator session. 
 `load_rulings` verifies complete history and revision chains, including content-addressed IDs. Changed underlying bytes require a new ledger and fresh review. Ledgers are limited to one source manifest; separate families/snapshots generally use separate ledgers. Operator directories require normal local ownership/access controls. The exclusive sidecar lock coordinates cooperating writers; a stale lock or failed write requires a visible recovery decision, never automatic history deletion.
 
 Future validation must exercise source/evidence tamper, changed-claim conflicts, stale supersession, conflicting annotators, preserved disagreement history, idempotent import, fresh export refusal, human confirmation/date requirements, partial-tail refusal, busy writer and crash behavior. No such runtime validation, human adjudication, heldout custody or comparative score has occurred here. Preparing this DEV package does not authorize private source transfer, external accounts, publication, provider use or spending.
+
+## Source-first operator procedure
+
+This workflow is independent of candidate extraction. It is authored source only: none of these calls, selections, human actions, ruling writes or label exports has run in this construction phase. `evaluation.annotation` imports the centrally published `ManualAnnotation`; it defines no competing wire model. It reuses Snapshot/Span/Claim/Predicate/Inventory/GoldAtom and the existing stable-ID, raw-coordinate, ruling and citation authorities.
+
+1. Freeze an owned source Snapshot, then call `prepare_source_annotation(snapshot_root, fresh_out, family_id=..., readme_path="README.md")`. This needs no candidate audit/report. The package contains a frozen snapshot and a final `SOURCE.json` with the entire raw-line inventory, source/evidence scope entries/gaps, no candidate findings and no labels. Every raw line begins pending review. Record the returned file-byte digest separately. Treat copied source/code/HTML as inert data, never execute or import it.
+2. Read every raw README line and retain a disposition for each block. Select both exact atom and containing parent byte ranges with `select_manual_span` / `select_manual_atom`. Provide every structured predicate field and all qualifiers/negation explicitly; there is no quote-to-occurrence search, candidate-list picker or model proposal fallback. Supply a parent-local ordinal; the code derives stable IDs and verifies original bytes/UTF-8 coordinates. Distinct atoms may preserve the same parent, but duplicate/conflicting exact-span semantics refuse.
+3. Use `make_manual_inventory` with the independently selected claims, unique retained parent spans and `block_reviews` mapping every block ID to `(status, reason)`. Missing reviews remain `unparsed`. A manually understood operational/unsupported-semantic claim can be inventoried with its kind and later ruled unknown; use `unsupported` only when manual decomposition/review is unresolved. Both unsupported/unparsed blocks keep the inventory incomplete. Do not mark unreviewed source nonassertive to force completion.
+4. Use `record_manual_annotation` to write a fresh immutable actor-attributed record, including pending states when appropriate. Preliminary agent inventories remain agent records. An actual human inventory requires real identity/date/action and explicit confirmation, without bulk-upgrading an agent record. A revision uses `previous_path` for the same actor/type/family, names the prior content ID and never overwrites it. Preserve all original record files; a final export copies its current record, not every earlier manual-record file.
+5. After actual review, supply a `GoldAtom` judgment for an exact manual claim, using `gold_id=stable_id("annotation-subject", family_id, claim_id)`. `record_manual_ruling` validates that source/claim identity, exact evidence bytes and real actor type/action before appending to the existing ruling ledger. A human ruling requires a human-reviewed manual inventory and explicit human confirmation. An unknown judgment may use a genuinely empty evidence/coverage bundle; this is not an absence certificate or fabricated successful parser result. Nonunknown judgments need actual reopenable evidence. Preserve all disagreements and revisions.
+6. `export_manual_gold` is a separate explicit later human operator action. Supply source/annotation/ledger paths, reopened evidence maps, one selected latest human ruling ID per manual claim, actual operator/action/date, nonblank adjudication rationale and `human_confirmation=True`. Incomplete raw coverage, pending atoms, nonhuman selections, changed history/bindings or unresolved competing judgments refuse. For each conflicting latest judgment, the selected human ruling must retain that ruling ID in its `disagreements`; a real reviewer must append such adjudication rather than having the exporter invent it.
+7. The fresh scorer-only output contains `gold.jsonl` in existing `GoldAtom` wire format, full retained ruling history, the current manual annotation, exact evidence and final `EXPORT.json` digests/selection metadata. It stays outside the inference snapshot. The operator confirmation is an attestation, not authentication or independent custody verification; all exported custody/heldout/admission/comparative flags remain false. Send this label material only after source-only inference is closed and the real evaluation protocol permits scorer access.
+8. Use `export_manual_proposals` for preliminary agent rows instead. It emits `agent-proposals.jsonl` with explicit pending manual claims/blocks and never calls them human gold. Use `audit_manual_omissions` only after freezing the manual inventory to compare a later candidate Inventory with the existing scorer matcher. Its descriptive diagnostic retains all manual IDs, omissions, ambiguous matches and extra candidate rows; pending manual blocks make it provisional. No candidate output was used to select the source-first inventory.
+
+Published Python API signatures (all paths are `Path`, all digests strings):
+
+| Function | Explicit inputs beyond paths |
+|---|---|
+| `prepare_source_annotation(snapshot_root, out, *, family_id, readme_path="README.md") -> str` | Real DEV family identity; fresh output directory |
+| `select_manual_span(snapshot_root, *, start_byte, end_byte, readme_path="README.md") -> Span` | Half-open original byte coordinates |
+| `select_manual_atom(snapshot_root, *, start_byte, end_byte, parent_start_byte, parent_end_byte, atom_ordinal, kind, normalized, predicates, uncertainty, readme_path="README.md") -> Claim` | Explicit structured `list[Predicate]` and retained parent context; IDs derived |
+| `make_manual_inventory(snapshot_root, *, claims, parent_spans, block_reviews, readme_path="README.md") -> Inventory` | `list[Claim]`, `list[Span]`, `dict[str, tuple[str,str]]` review states/reasons |
+| `record_manual_annotation(snapshot_root, out, *, family_id, inventory, parent_spans, annotator_type, annotator_id, recorded_at, action_id=None, previous_path=None, human_confirmation=False) -> ManualAnnotation` | Actual actor type/identity/date/action; fresh output file |
+| `load_manual_annotation(snapshot_root, path) -> ManualAnnotation` | Reopens exact source, block coverage, parents, claims and content ID |
+| `record_manual_ruling(snapshot_root, annotation_path, ledger_path, *, atom, evidence_path, recorded_at, human_action_id=None, supersedes_ruling_id=None, human_confirmation=False) -> AnnotationRuling` | Actual supplied `GoldAtom` judgment and exact evidence bundle |
+| `export_manual_gold(snapshot_root, annotation_path, ledger_path, out, *, evidence_files, ruling_ids, operator_id, action_id, recorded_at, adjudication_rationale, human_confirmation=False) -> str` | `dict[claim_id, Path]` evidence files and `dict[claim_id, ruling_id]` explicit final selections |
+| `export_manual_proposals(snapshot_root, annotation_path, ledger_path, out, *, evidence_files, ruling_ids) -> str` | Explicit agent-only selection and pending-coverage metadata |
+| `audit_manual_omissions(snapshot_root, annotation_path, candidate_inventory_path, out) -> str` | A later candidate Inventory; fresh diagnostic file |
+
+All raw-source ranges use `RawDocument`, including CRLF and bare CR. Complete means explicit full README inventory review, not semantic correctness, code scope completeness, actual human authentication or release acceptance. The service can reject inconsistent bytes/IDs/coverage states; it cannot prove that an operator actually read or correctly classified every assertion. Run full future tests for parent/UTF-8 boundaries, duplicate/conflicting atoms, missing blocks, source/evidence mutation, competing adjudications, confirmation/date refusal, snapshot-only preparation and empty-candidate omission denominators after execution is authorized. No heldout source, labels, actual human actions or comparative measurement is supplied here.
+
+## Future curator staging calls
+
+The `claim_auditor.evaluation.custody` APIs below are dormant source. No staging, receipt creation, permissions change, label export or verifier operation has been executed in Dirty Mode. Output parents must already exist as ordinary operator-owned directories; outputs are fresh, outside preserved inputs, and failed partial outputs remain untouched for investigation.
+
+| Call | Future result |
+|---|---|
+| `stage_dev_family(source_root, out, *, alias, provenance_path, access_receipt_path, designation="DEV_ONLY", admission_requested=False)` | Copies the exact fixture source into `source/<alias>/`; places supplied provenance/receipt bytes only in `control/`; writes `STAGE.json` and final `SEAL.json`; returns exact SEAL-byte SHA256 |
+| `verify_dev_stage(root, *, expected_seal_digest)` | Requires a separately retained full digest, reopens every sealed file and the existing Snapshot manifest, checks provenance and receipt claims, and returns the existing `Snapshot` type |
+| `export_dev_source(root, out, *, expected_seal_digest)` | Writes only the aliased Snapshot tree to a fresh source-release directory, excluding control/label material; returns source-manifest digest |
+| `stage_dev_labels(root, ledger_path, out, *, expected_seal_digest, evidence_files, human_confirmation=False)` | Reopens existing ruling history and exact per-claim evidence bundles, validates spans/evidence/coverage with the sole resolver, then writes separate rulings/evidence and final `LABELS.json`; returns its digest |
+
+Path arguments are `pathlib.Path`; digests/alias/designation are strings. `evidence_files` maps exact claim IDs to bounded existing evidence JSON paths. Label output must stay outside the entire source stage. No automatic consensus, final gold release or evaluation-lock admission occurs. Any actual human attributions still need explicit confirmation at label staging; no action identity or judgment is generated by these calls. The service owns these local artifact formats and reuses existing Snapshot/Ruling models instead of duplicating central wire types.
+
+Supply an opaque alias matching `f-` plus sixteen lowercase hexadecimal digits, chosen by the actual curator without encoding family, kind or expected outcome. A format-valid alias alone is not random, anonymous or blind. The sources themselves can expose semantic identity; previously seen material stays DEV. Preserve the real family/ancestry mapping privately in the original provenance. No alias examples here create an actual curator mapping.
+
+The source provenance must match every frozen file path/size/SHA256 and its documented inventory digest method, retain actual author/origin/ancestry/rights basis, and explicitly declare DEV-only/not-heldout status. This checks consistency of a supplied record, not the truth of its authorship or rights assertions. Do not stage labels or review prompts inside the source directory. Known annotation filenames are refused; the operator must also check actual content for leakage.
+
+The operator must supply an actual access receipt JSON with exactly these fields; this document supplies field requirements, not a populated receipt:
+
+| Field | Required input |
+|---|---|
+| `format` | `dev-access-receipt/1` |
+| `receipt_id`, `operator_id`, `recorded_at` | Actual operator's nonempty receipt/identity and aware nonfuture action date |
+| `intended_use` | `DEV_ONLY` |
+| `rights_review` | `operator_attested`; no claim of independent legal/rights verification |
+| `source_contains_annotation_material` | `false`, only after an actual operator check |
+| `access_control` | `operator_attestation_only`; no ACL effectiveness is asserted |
+| `custody_verified`, `heldout`, `admitted` | Each `false`; true or missing claims are refused |
+
+Keep the returned seal digest separately from the staged directory; reading a replacement seal's own digest back into verification defeats the check. Verification checks the exact artifact inventory, including extra/missing files, source-byte changes, provenance mismatch and unsupported admission assertions. It is not a rights/custody certificate. Later authorized activation must exercise tamper/extra-file cases, receipt/alias refusals, source-label separation, real filesystem races and label-stage citation/human-action controls. Future heldout sealing requires independently staffed material, real access controls and the promoted admission protocol outside these DEV-only functions.

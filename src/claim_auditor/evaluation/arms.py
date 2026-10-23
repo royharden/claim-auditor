@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+from pydantic import ValidationError
 
 from claim_auditor.audit.policy import decide_finding
 from claim_auditor.citations import validate_span
 from claim_auditor.contracts import (
-    AuditError, Claim, EvaluationPacket, Evidence, Inventory, Limits, PredicateResult, PredictionRow,
-    ProviderProposal, Snapshot, Span, canonical_json, sha256, stable_id,
+    AuditError, BudgetState, Claim, EvaluationPacket, Evidence, Inventory, Limits, PredicateResult, PredictionRow,
+    LiveProviderResponse, ProviderProposal, ProviderResponse, Snapshot, Span, canonical_json, sha256, stable_id,
 )
 from claim_auditor.inventory import extract_inventory
+from claim_auditor.evaluation.packet_facts import PacketFacts, resolve_packet_predicate
 
 
 def validate_packet(packet: EvaluationPacket, snapshot: Snapshot, root: Path) -> None:
@@ -51,9 +53,11 @@ def _span(packet: EvaluationPacket, path: str, digest: str, start: int, quote: b
           frozen: bytes | None = None) -> Span:
     raw = quote if frozen is None else frozen
     end = start + len(quote)
+    from claim_auditor.inventory.raw import RawDocument
+
+    first_line, last_line = RawDocument.decode(raw).line_bounds(start, end)
     return Span(snapshot_id=packet.snapshot_id, path=path, file_sha256=digest,
-                start_byte=start, end_byte=end, start_line=raw[:start].count(b"\n") + 1,
-                end_line=raw[:max(start, end - 1)].count(b"\n") + 1,
+                start_byte=start, end_byte=end, start_line=first_line, end_line=last_line,
                 quote=quote.decode("utf-8"), quote_sha256=sha256(quote))
 
 
@@ -73,6 +77,26 @@ def failure_row(snapshot_id: str, arm: str, status: str, reason: str,
                          status=status, error=reason)
 
 
+def failure_status(reason: str) -> str:
+    if reason == "abstention_screened":
+        return "abstention_screened"
+    if reason in {"input_too_large", "readme_too_large", "packet_anchor_limit", "atom_limit"}:
+        return "input_too_large"
+    if any(part in reason for part in ("citation", "integrity", "snapshot_mismatch", "unadmitted")):
+        return "citation_failure"
+    if reason in {"invalid_output", "invalid_replay", "unvalidated_model_atom", "invalid_proposal"}:
+        return "invalid_output"
+    return "execution_failure"
+
+
+def settlement_unknown(response: LiveProviderResponse, state: BudgetState | None) -> bool:
+    """Read producer observations/state only; never compute replacement balances."""
+    return (state is None or state.unknown_settlement or state.pending is not None
+            or len(response.usage) != len(response.attempts)
+            or any(any(value is None for value in (u.input_tokens, u.output_tokens, u.cost_usd, u.elapsed_seconds))
+                   for u in response.usage))
+
+
 def validate_proposal_citations(packet: EvaluationPacket, snapshot: Snapshot, root: Path,
                                 proposals: list[ProviderProposal]) -> None:
     """Reopen even unused model pointers; an invalid pointer is an integrity error."""
@@ -89,12 +113,12 @@ def validate_proposal_citations(packet: EvaluationPacket, snapshot: Snapshot, ro
 
 def resolve_packet_claims(packet: EvaluationPacket, snapshot: Snapshot, root: Path,
                           claims: list[Claim], *,
-                          source_inventory: Inventory | None = None,
+                          facts: PacketFacts,
                           model_proposal: str | None = None) -> tuple[list[PredictionRow], list[Evidence]]:
-    """Establish only exact, code-recognized positive path predicates.
+    """Use the shared admitted-packet fact authority for every paired treatment.
 
     A model's semantics, confidence and proposed verdict never establish support.
-    Other kinds stay unknown until a bounded packet-owned proof is implemented.
+    Unknown semantics, incomplete context and absent facts remain explicit.
     """
     predictions: list[PredictionRow] = []
     evidence: list[Evidence] = []
@@ -116,43 +140,47 @@ def resolve_packet_claims(packet: EvaluationPacket, snapshot: Snapshot, root: Pa
                       and claim.uncertainty == uncertainty
                       and claim.predicates[0].model_dump(mode="json", exclude={"predicate_id"}) == fields)
         # A narrow quote may drop a surrounding "if", negation or example fence.
-        # Existing independently parsed whole assertions constrain support only:
-        # every new valid model atom is still emitted, with unknown when no such
-        # code-owned assertion support exists. Nothing is sent to the provider.
-        assertion_context = source_inventory is not None and any(
-            source_claim.span == claim.span
-            and source_claim.kind == claim.kind
-            and not source_claim.uncertainty
-            and [p.model_dump(exclude={"predicate_id"}) for p in source_claim.predicates]
-                == [p.model_dump(exclude={"predicate_id"}) for p in claim.predicates]
-            for source_claim in source_inventory.claims
-        )
+        # Source-context validation uses raw whole assertion spans, never a list
+        # of rule-discovered claims. New exact-span atoms can establish facts.
+        assertion_context = (claim.span.start_byte, claim.span.end_byte) in facts.assertion_spans
         results: list[PredicateResult] = []
         for predicate in claim.predicates:
-            proof: list[Evidence] = []
-            # Negation/qualifiers/conditions cannot become a path-existence shortcut.
-            eligible = (recognized and assertion_context and not claim.uncertainty and len(claim.predicates) == 1
-                        and predicate.kind == "path_exists" and not predicate.negated
-                        and predicate.condition is None and not predicate.qualifiers)
-            excerpt = next((e for e in packet.excerpts if e.path == predicate.path), None) if eligible else None
-            if excerpt is not None:
-                from claim_auditor.snapshot import read_source
-
-                frozen = read_source(snapshot, root, excerpt.path)
-                pointer = _span(packet, excerpt.path, excerpt.file_sha256, excerpt.start_byte,
-                                excerpt.quote.encode("utf-8"), frozen)
-                validate_span(snapshot, root, pointer)
-                proof.append(Evidence(evidence_id=stable_id("packet-evidence", packet.packet_digest, predicate.predicate_id),
-                                      kind="positive", span=pointer, coverage_id=None, query=predicate,
-                                      scope_id=snapshot.scope_id, parser_version="literal-path/1",
-                                      index_version="packet-proof/1", pattern_version="none"))
-            evidence.extend(proof)
-            results.append(PredicateResult(predicate_id=predicate.predicate_id,
-                                           state="established" if proof else "unknown",
-                                           reason="admitted_path_excerpt" if proof else "packet_no_complete_proof",
-                                           evidence=proof, coverage=[], complete=bool(proof)))
+            if recognized and assertion_context and not claim.uncertainty:
+                result = resolve_packet_predicate(packet, facts, snapshot, root, predicate)
+            else:
+                result = PredicateResult(predicate_id=predicate.predicate_id, state="unknown",
+                                         reason="packet_unvalidated_assertion_context", evidence=[], coverage=[], complete=False)
+            evidence.extend(result.evidence)
+            results.append(result)
         finding = decide_finding(claim, results, citation_valid=True, model_proposal=model_proposal)
         predictions.append(PredictionRow(prediction_id=claim.claim_id, family_id=snapshot.snapshot_id,
                                          finding=finding, accused_predicate_ids=finding.accused_predicate_ids,
                                          status="prediction", error=None))
     return predictions, evidence
+
+
+def assemble_provider_rows(packet: EvaluationPacket, snapshot: Snapshot, root: Path,
+                           facts: PacketFacts, response: ProviderResponse | LiveProviderResponse,
+                           *, role: str) -> tuple[list[PredictionRow], list[Evidence], str]:
+    """One response-to-row authority for writing and offline replay verification."""
+    arm = "live_extraction" if role == "extraction" else "live_single_pass"
+    rows = [failure_row(snapshot.snapshot_id, arm, failure_status(a.status), a.error or a.status, n + 1)
+            for n, a in enumerate(response.attempts) if a.status != "proposed"]
+    evidence: list[Evidence] = []
+    try:
+        if response.status == "proposed" or response.status == "incomplete" and response.proposals:
+            validate_proposal_citations(packet, snapshot, root, response.proposals)
+            # Retain incomplete/unsettled proposed atoms as unknown, rather than
+            # dropping their rows or certifying a complete treatment.
+            admitted_facts = facts if response.status == "proposed" else PacketFacts(packet.packet_digest)
+            tag = "proposal_only" if response.status == "proposed" else "incomplete"
+            resolved, evidence = resolve_packet_claims(packet, snapshot, root, [p.claim for p in response.proposals],
+                                                       facts=admitted_facts, model_proposal=f"{response.mode}:{role}:{tag}")
+            rows.extend(resolved)
+        if response.status != "proposed":
+            rows.append(failure_row(snapshot.snapshot_id, arm, failure_status(response.status), response.error or response.status))
+        return rows, evidence, response.status
+    except (AuditError, ValidationError, OSError, ValueError, TypeError) as exc:
+        reason = exc.reason if isinstance(exc, AuditError) else "invalid_output"
+        rows.append(failure_row(snapshot.snapshot_id, arm, failure_status(reason), reason))
+        return rows, [], "incomplete"

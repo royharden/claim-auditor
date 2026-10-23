@@ -274,7 +274,7 @@ def current_rulings(
 
 
 def prepare_annotation_package(run_root: Path, out: Path, *, family_id: str) -> str:
-    """Prepare source/evidence and blank review instructions, never GoldAtom rows.
+    """Prepare assisted candidate review, never a complete manual denominator.
 
     This future operator operation invokes existing report integrity verification;
     it is not run during static-only construction. PACKAGE.json is written last.
@@ -332,11 +332,15 @@ def prepare_annotation_package(run_root: Path, out: Path, *, family_id: str) -> 
                      "annotation_subject_id": stable_id("annotation-subject", family_id, claim.claim_id)})
     package = {
         "format": "annotation-package/1", "designation": "DEV_ONLY",
+        "review_mode": "assisted_candidate_findings",
+        "complete_manual_inventory": False,
         "family_id": family_id, "source_manifest_digest": report.snapshot.manifest_digest,
         "snapshot": report.snapshot, "inventory": report.inventory,
         "subjects": rows, "human_review_performed": False, "gold_created": False,
         "status": "prepared_for_operator_review_only",
         "instructions": [
+            "This candidate-based package cannot establish end-to-end manual inventory or extraction recall.",
+            "Use evaluation.annotation.prepare_source_annotation on raw Snapshot bytes for an independent denominator.",
             "Review source/README.md first; account for every assertion and extractor omissions.",
             "Open exact source/evidence bytes; integrity verification is not semantic acceptance.",
             "No verdicts, human identities or human actions are prepopulated.",

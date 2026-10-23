@@ -1,0 +1,16 @@
+{
+  "case_id": "FILL_CASE_ID",
+  "family_id": "FILL_REAL_FAMILY_ID",
+  "ancestry_id": "FILL_REAL_COMMON_ANCESTOR_ID",
+  "snapshot_root": "FILL_LOCAL_SNAPSHOT_PATH",
+  "snapshot_id": "FILL_EXACT_SNAPSHOT_ID",
+  "snapshot_manifest_digest": null,
+  "source_content_digest": null,
+  "run_root": "FILL_LOCAL_CLOSED_PAIRED_RUN_PATH",
+  "run_manifest_digest": null,
+  "gold_path": "FILL_LATER_CURATOR_GOLD_PATH_OUTSIDE_INFERENCE",
+  "gold_digest": null,
+  "protocol_digest": null,
+  "source_rights_receipt": null,
+  "custody_receipt": null
+}

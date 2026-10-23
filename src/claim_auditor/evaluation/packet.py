@@ -11,25 +11,22 @@ from pydantic import ValidationError
 
 from claim_auditor.contracts import (
     AuditError, EvaluationLock, EvaluationPacket, EvaluationPreparation,
-    Limits, POLICY_VERSION, SCHEMA_VERSION, PacketExcerpt, ScopeGap, canonical_json, sha256,
+    Limits, POLICY_VERSION, SCHEMA_VERSION, PacketExcerpt, ScopeGap, Snapshot, canonical_json, sha256,
 )
 from claim_auditor.evaluation.scoring import MATCHER_VERSION
 from claim_auditor.inventory.raw import RawDocument
 from claim_auditor.snapshot import load_snapshot, read_source
+from claim_auditor.snapshot.safeio import read_ordinary
 
 PACKET_VERSION = "readme-anchors/1"
 _REQUIRED_ARMS = {"product_full_index", "packet_candidate", "packet_grep", "live_extraction", "live_single_pass"}
 
 
 def code_digest() -> str:
-    """Hash installed source bytes in deterministic order, never import targets."""
-    package = Path(__file__).resolve().parents[1]
-    entries = []
-    for source in sorted(package.rglob("*.py")):
-        if source.is_symlink():
-            raise AuditError("unsafe_tool_source", "tool source must contain ordinary files")
-        entries.append([source.relative_to(package).as_posix(), sha256(source.read_bytes())])
-    return sha256(canonical_json(entries))
+    """Compatibility API; trusted source identity has one provenance authority."""
+    from claim_auditor.provenance import code_digest as trusted_code_digest
+
+    return trusted_code_digest()
 
 
 def _check_lock(lock: EvaluationLock) -> None:
@@ -57,17 +54,8 @@ def _check_lock(lock: EvaluationLock) -> None:
         raise AuditError("evaluation_code_mismatch", "installed source closure differs from admitted lock")
 
 
-def prepare_evaluation(protocol_path: Path, input_path: Path, out: Path) -> EvaluationPreparation:
-    if protocol_path.is_symlink() or not protocol_path.is_file() or protocol_path.stat().st_size > 128 * 1024:
-        raise AuditError("invalid_evaluation_lock", "LOCK must be an ordinary bounded file")
-    try:
-        lock = EvaluationLock.model_validate_json(protocol_path.read_bytes())
-    except (ValidationError, UnicodeDecodeError) as exc:
-        raise AuditError("invalid_evaluation_lock", "LOCK failed closed-schema validation") from exc
-    _check_lock(lock)
-    snapshot = load_snapshot(input_path)
-    if snapshot.manifest_digest != lock.source_seal_digest:
-        raise AuditError("source_seal_mismatch", "source snapshot differs from admitted source seal")
+def _build_packet(snapshot: Snapshot, input_path: Path) -> EvaluationPacket:
+    """Sole raw-anchor builder shared by DEV and admitted preparation."""
     readme_path = "README.md"
     readme_raw = read_source(snapshot, input_path, readme_path)
     if len(readme_raw) > Limits().max_readme_bytes:
@@ -143,6 +131,58 @@ def prepare_evaluation(protocol_path: Path, input_path: Path, out: Path) -> Eval
         raise AuditError("input_too_large", "mandatory scope metadata exceeds 8 KiB; no paired semantic arm may silently omit it")
     fields = dict(schema_version=SCHEMA_VERSION, packet_version=PACKET_VERSION, snapshot_id=snapshot.snapshot_id, snapshot_manifest_digest=snapshot.manifest_digest, readme_path=readme_path, readme_sha256=sha256(readme_raw), readme_text=readme_text, excerpts=excerpts, scope_entries=snapshot.entries, exclusions=packet_gaps, candidate_count=len(merged), omitted_count=omitted, complete=snapshot.complete and not packet_gaps and omitted == 0, absence_certificates=False)
     packet = EvaluationPacket(packet_digest=sha256(canonical_json(fields)), **fields)
+    return packet
+
+
+def _source_metadata(root: Path) -> Snapshot:
+    """Inspect the sealed control manifest before reading any source file bytes."""
+    from claim_auditor.snapshot import _make_snapshot, _manifest_digest
+
+    snapshot = Snapshot.model_validate_json(read_ordinary(root, "manifest.json", cap=4 * 1024 * 1024))
+    if _manifest_digest(snapshot.model_dump(mode="json")) != snapshot.manifest_digest:
+        raise AuditError("source_seal_mismatch", "source control manifest digest differs", 4)
+    expected = _make_snapshot(snapshot.entries, snapshot.exclusions, snapshot.source_kind,
+                              snapshot.commit, snapshot.hash_algorithm, snapshot.tree_identity)
+    if snapshot != expected:
+        raise AuditError("source_seal_mismatch", "source control identities differ", 4)
+    return snapshot
+
+
+def prepare_dev_packet(snapshot_root: Path, out: Path) -> EvaluationPacket:
+    """Future keyless DEV operation; never manufactures an admitted experiment."""
+    if out.exists() or out.is_symlink():
+        raise AuditError("output_exists", "DEV preparation requires a fresh directory")
+    if out.resolve() == snapshot_root.resolve() or snapshot_root.resolve() in out.resolve().parents:
+        raise AuditError("output_inside_snapshot", "DEV preparation must preserve source")
+    snapshot = load_snapshot(snapshot_root)
+    packet = _build_packet(snapshot, snapshot_root)
+    provenance = dict(designation="DEV_ONLY", source_only=True, admitted=False,
+                      human_adjudicated=False, comparative_complete=False, heldout=False,
+                      packet_digest=packet.packet_digest, input_digest=sha256(canonical_json(packet)),
+                      source_manifest_digest=snapshot.manifest_digest,
+                      status="prepared_only", arm_status={name: "not_run" for name in sorted(_REQUIRED_ARMS)},
+                      limitations=["Disclosed DEV source only; no LOCK, rights, access or custody receipt is created.",
+                                   "Preparation is not inference, human gold, scoring or comparative acceptance."])
+    out.mkdir(parents=True, exist_ok=False)
+    for name, value in {"packet.json": packet, "DEV.json": provenance}.items():
+        with (out / name).open("xb") as handle:
+            handle.write(canonical_json(value) + b"\n")
+    return packet
+
+
+def prepare_evaluation(protocol_path: Path, input_path: Path, out: Path) -> EvaluationPreparation:
+    try:
+        lock = EvaluationLock.model_validate_json(read_ordinary(protocol_path.parent, protocol_path.name, cap=128 * 1024))
+    except (ValidationError, ValueError, OSError) as exc:
+        raise AuditError("invalid_evaluation_lock", "LOCK must be ordinary bounded closed-schema JSON") from exc
+    _check_lock(lock)
+    metadata = _source_metadata(input_path)
+    if metadata.manifest_digest != lock.source_seal_digest:
+        raise AuditError("source_seal_mismatch", "source snapshot differs from admitted source seal")
+    snapshot = load_snapshot(input_path)
+    if snapshot != metadata:
+        raise AuditError("source_seal_mismatch", "source changed after metadata admission", 4)
+    packet = _build_packet(snapshot, input_path)
     preparation = EvaluationPreparation(protocol_id=lock.protocol_id, packet_digest=packet.packet_digest, mode="prepared_only", arm_status={name: "not_run" for name in lock.arm_names}, comparative_complete=False, human_adjudicated=False, source_only=True, limitations=[
         "Packet preparation does not run inference or scoring; all required arms remain not measured / comparative acceptance incomplete.",
         "Human-adjudicated evaluation not measured. No gold, labels, adjudication rationale or heldout contents beyond the admitted source snapshot were loaded.",

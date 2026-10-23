@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from pydantic import ValidationError
+from claim_auditor.audit.policy import SUPPORTED_KINDS
 
 from claim_auditor.contracts import (
     AuditError, Claim, EvaluationResult, GoldAtom, Predicate, PredictionRow,
@@ -16,7 +17,7 @@ from claim_auditor.contracts import (
 
 MATCHER_VERSION = "raw-span-predicate/1"
 _VERDICTS = ("verified", "partial", "missing", "unknown")
-_SUPPORTED = {"path_exists", "symbol_declared", "config_literal", "dependency_declared", "metadata_declared", "cli_entry_declared", "env_reference", "bounded_code_fact"}
+_SUPPORTED = SUPPORTED_KINDS
 T = TypeVar("T", bound=WireModel)
 
 
@@ -91,6 +92,7 @@ def score_rows(predictions: list[PredictionRow], gold: list[GoldAtom], *, includ
         "unknown_answerable": 0, "supported_kind_atoms": 0, "correct_answerable": 0,
         "nonunknown_predictions": 0, "valid_predictions": 0, "atom_predictions": 0, "valid_matched_atoms": 0, "citation_open": 0,
         "citation_rejected": 0, "families": len({row.family_id for row in gold}),
+        "supported_extraction_matches": 0, "supported_extraction_predictions": 0,
     })
     for status in ("invalid_output", "abstention_screened", "input_too_large", "citation_failure", "execution_failure"):
         counts[status] = 0
@@ -119,6 +121,7 @@ def score_rows(predictions: list[PredictionRow], gold: list[GoldAtom], *, includ
             items.append(ScoredItem(gold_id=None, prediction_id=row.prediction_id, family_id=row.family_id, status=row.status, expected=None, actual=None))
             continue
         counts["atom_predictions"] += 1
+        counts["supported_extraction_predictions"] += finding.claim.kind in _SUPPORTED
         predicted_kinds[finding.claim.kind] += 1
         accused = _subset(finding.claim, row.accused_predicate_ids)
         if set(row.accused_predicate_ids) != set(finding.accused_predicate_ids):
@@ -157,6 +160,7 @@ def score_rows(predictions: list[PredictionRow], gold: list[GoldAtom], *, includ
         correct = valid and finding.verdict == expected.verdict and relation_correct and (finding.verdict != "partial" or exact_partial)
         if valid:
             counts["valid_matched_atoms"] += 1
+            counts["supported_extraction_matches"] += expected.claim.kind in _SUPPORTED
             matched_kinds[expected.claim.kind] += 1
             confusion[expected.verdict][finding.verdict] += 1
             counts["correct_accusations"] += len(accused & gold_accused) if expected.answerable else 0
@@ -178,9 +182,15 @@ def score_rows(predictions: list[PredictionRow], gold: list[GoldAtom], *, includ
         status = family_failures[0] if len(family_failures) == 1 else "execution_failure" if family_failures else "omitted"
         items.append(ScoredItem(gold_id=row.gold_id, prediction_id=None, family_id=row.family_id, status=status, expected=row.verdict, actual=None))
     supported_answerable = sum(row.answerable and row.claim.kind in _SUPPORTED for row in gold)
+    counts["supported_extraction_precision_numerator"] = counts["supported_extraction_matches"]
+    counts["supported_extraction_precision_denominator"] = counts["supported_extraction_predictions"]
+    counts["supported_extraction_recall_numerator"] = counts["supported_extraction_matches"]
+    counts["supported_extraction_recall_denominator"] = counts["supported_kind_atoms"]
     metrics = {
         "extraction_precision": _rate(counts["valid_matched_atoms"], counts["atom_predictions"]),
         "extraction_recall": _rate(counts["valid_matched_atoms"], len(gold)),
+        "supported_extraction_precision": _rate(counts["supported_extraction_precision_numerator"], counts["supported_extraction_precision_denominator"]),
+        "supported_extraction_recall": _rate(counts["supported_extraction_recall_numerator"], counts["supported_extraction_recall_denominator"]),
         "accusation_precision": _rate(counts["correct_accusations"], counts["accusations"]),
         "defect_recall": _rate(counts["identified_defects"], counts["gold_defects"]),
         "verified_precision": _rate(counts["correct_verified"], counts["verified_predictions"]),
@@ -200,7 +210,7 @@ def score_rows(predictions: list[PredictionRow], gold: list[GoldAtom], *, includ
         metrics[f"extraction_recall:{kind}"] = _rate(matched_kinds[kind], gold_kinds[kind])
     per_kind = Counter(row.claim.kind for row in gold if row.claim.kind in _SUPPORTED)
     minima = len(gold) >= 120 and counts["families"] >= 12 and counts["gold_defects"] >= 30 and counts["gold_nondefects"] >= 30 and counts["accusations"] >= 30 and counts["verified_predictions"] >= 30 and bool(per_kind) and all(n >= 15 for n in per_kind.values())
-    thresholds = {"extraction_precision": .95, "extraction_recall": .90, "accusation_precision": .95, "verified_precision": .95, "defect_recall": .80, "answerability_coverage": .70}
+    thresholds = {"supported_extraction_precision": .95, "supported_extraction_recall": .90, "accusation_precision": .95, "verified_precision": .95, "defect_recall": .80, "answerability_coverage": .70}
     counts["dev_targets_met"] = int(minima and all(metrics[name] is not None and metrics[name] >= limit for name, limit in thresholds.items()) and metrics["unknown_overuse"] is not None and metrics["unknown_overuse"] <= .20 and not counts["citation_rejected"])
     from claim_auditor.evaluation.measurements import family_bootstrap
 
@@ -230,12 +240,17 @@ def score_predictions(predictions_path: Path, gold_path: Path, out: Path) -> Eva
         # available to the already closed inference run.
         families: dict[str, set[str]] = defaultdict(set)
         for row in gold:
+            if row.claim.span.snapshot_id != manifest.snapshot_id or row.claim.snapshot_id != manifest.snapshot_id:
+                raise AuditError("gold_scope_mismatch", "all gold must belong to the verified closed-run snapshot")
             families[row.claim.span.snapshot_id].add(row.family_id)
+        options = families.get(manifest.snapshot_id, set())
+        if len(options) != 1:
+            raise AuditError("ambiguous_family", "closed-run snapshot must map to exactly one curator family")
         remapped: list[PredictionRow] = []
         for row in predictions:
-            options = families.get(row.finding.claim.span.snapshot_id, set()) if row.finding is not None else set()
-            if len(options) != 1:
-                raise AuditError("ambiguous_family", "closed-run snapshot must map to exactly one curator family")
+            if row.finding is not None and (row.finding.claim.snapshot_id != manifest.snapshot_id
+                                          or row.finding.claim.span.snapshot_id != manifest.snapshot_id):
+                raise AuditError("prediction_scope_mismatch", "prediction differs from verified closed-run snapshot")
             remapped.append(row.model_copy(update={"family_id": next(iter(options))}))
         predictions = remapped
     result = score_rows(predictions, gold)

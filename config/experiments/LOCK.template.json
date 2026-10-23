@@ -1,0 +1,22 @@
+{
+  "schema_version": "claim-auditor/1",
+  "protocol_id": "UNADMITTED-TEMPLATE",
+  "admitted": false,
+  "admitted_by": null,
+  "admitted_at": null,
+  "code_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "taxonomy_version": "declared-static/1",
+  "matcher_version": "raw-span-predicate/1",
+  "packet_version": "readme-anchors/1",
+  "arm_names": ["product_full_index", "packet_candidate", "packet_grep", "live_extraction", "live_single_pass"],
+  "provider_models": {"live_extraction": "", "live_single_pass": ""},
+  "source_seal_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "gold_seal_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "source_rights_receipt": "",
+  "custody_receipt": "",
+  "heldout_accessed": false,
+  "max_input_tokens": 32000,
+  "max_output_tokens": 8000,
+  "max_remote_seconds": 60,
+  "max_cost_usd": null
+}
