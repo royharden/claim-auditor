@@ -37,6 +37,13 @@ uses an atomic replace. Incomplete/crashed runs cannot be verified as complete.
 Exit codes: 0 complete report, 2 input/setup, 3 incomplete audit/comparison, 4
 integrity failure, 5 explicitly requested `--fail-on missing` policy. Nonzero input,
 integrity and incomplete status precedes optional accusation policy.
+A requested README with no snapshot entry is an input error
+(`readme_not_in_snapshot`, exit 2). A README excluded at snapshot time (for
+example an unsupported encoding or lone-CR line endings) yields an incomplete
+`Inventory` with a `readme_excluded` pipeline error whose detail is the gap reason
+(exit 3). Only an included README reaches `read_source`, whose byte-identity
+failures remain `source_integrity` (exit 4). These mappings are constructed
+source; they have not been executed.
 
 Live transport is disabled. Replay requires input/prompt/model/policy identities
 and independently recognized atoms, is visibly replay, and supplies no live quality

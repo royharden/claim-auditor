@@ -11,8 +11,9 @@ running them, installing dependencies, starting services or creating CI scaffold
 Use Python 3.12+ and a trusted installed tool outside the audited target. Dependencies
 are declared but not installed/locked during construction. A future owner resolves
 and reviews them, generates `uv.lock`, and then runs `uv sync`. No keys are needed
-for rules/fake/replay source paths. The CLI does not load `.env`; `.env.example`
-contains reserved names only, without values. Dormant HTTP credentials are explicit
+for rules/fake/replay source paths. The CLI does not load `.env` and reads no
+configuration, provider or credential settings from the environment;
+`.env.example` holds only an explanatory comment. Dormant HTTP credentials are explicit
 future caller arguments, never target-controlled configuration.
 
 From the product repository, after authorized setup:
@@ -290,8 +291,8 @@ results, real custody admission, human review or independent product acceptance.
 | Exit | Meaning |
 |---|---|
 | 0 | Requested local source/artifact operation completed; no product acceptance implied |
-| 2 | Invalid arguments/input/setup; inspect the structured error |
-| 3 | Incomplete audit, unresolved liability, or intentionally incomplete fake/replay comparison |
+| 2 | Invalid arguments/input/setup, including a `--readme` path absent from the snapshot (`readme_not_in_snapshot`); inspect the structured error |
+| 3 | Incomplete audit (including a README excluded at snapshot time, `readme_excluded`), unresolved liability, or intentionally incomplete fake/replay comparison |
 | 4 | Integrity/citation/pinned-identity failure; preserve the artifacts |
 | 5 | Complete audit hit explicitly requested `--fail-on missing` |
 

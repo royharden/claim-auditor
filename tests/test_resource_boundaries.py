@@ -11,6 +11,7 @@ from unittest.mock import patch
 from claim_auditor.audit.policy import decide_finding
 from claim_auditor.contracts import AuditError, canonical_json
 from claim_auditor.index import StaticIndex, build_index, resolve
+from claim_auditor.inventory import extract_inventory
 from claim_auditor.snapshot import create_fixture_snapshot, create_git_snapshot, read_source
 from claim_auditor.snapshot.safeio import MAX_FILE_BYTES
 
@@ -66,10 +67,23 @@ class ResourceBoundaryTests(unittest.TestCase):
             with self.assertRaises(AuditError) as caught:
                 read_source(snapshot, root, "README.md")
             self.assertEqual(caught.exception.reason, "source_integrity")
+            inventory = extract_inventory(snapshot, root, "README.md")
+            self.assertFalse(inventory.complete)
+            self.assertEqual([(error.reason, error.detail) for error in inventory.errors],
+                             [("readme_excluded", "unsupported_lone_cr_line_endings")])
+            self.assertEqual((inventory.claims, inventory.blocks), ([], []))
             query = predicate(kind="path_exists", subject="README.md", path="README.md", module=None)
             result = resolve(StaticIndex(snapshot=snapshot, root=root), query)
             self.assertEqual(result.state, "unknown")
             self.assertFalse(any(item.kind == "negative" for item in result.evidence))
+
+    def test_readme_absent_from_snapshot_is_input_error_not_integrity(self):
+        """what_bug_this_catches: a README path with no snapshot entry reported as integrity failure (4) instead of input (2)."""
+        with TemporaryDirectory() as directory:
+            snapshot, root = frozen_source(Path(directory))
+            with self.assertRaises(AuditError) as caught:
+                extract_inventory(snapshot, root, "docs/MISSING.md")
+            self.assertEqual((caught.exception.reason, caught.exception.exit_code), ("readme_not_in_snapshot", 2))
 
     def test_source_file_byte_cap_leaves_no_complete_manifest(self):
         """what_bug_this_catches: an oversized source file being admitted or published as a complete snapshot."""
