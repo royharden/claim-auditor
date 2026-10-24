@@ -498,7 +498,14 @@ def _verify(root: Path, source: Path, expected_digest: str | None) -> dict:
         successes = [row for row in rows if row.status == "prediction"]
         if not paired:
             if successes or info["status"] == "complete_source":
-                full_manifest = verify_report(root / "full-index-run")
+                try:
+                    full_manifest = verify_report(root / "full-index-run")
+                except AuditError as exc:
+                    # The nested run is sealed inside this paired run: a missing RUN.json is a
+                    # deleted pinned artifact (4), never the operator-root run_not_found (2).
+                    if exc.reason == "run_not_found":
+                        raise AuditError("paired_artifact_integrity", "sealed full-index run is missing", 4) from exc
+                    raise
                 attempts[arm] = full_manifest.attempts
                 report = AuditReport.model_validate_json(read_ordinary(root / "full-index-run", "report.json", cap=_CAP))
                 if [r.finding for r in successes] != report.findings or evidence != report.evidence:

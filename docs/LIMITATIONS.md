@@ -15,7 +15,9 @@ Conjunctions and conditions remain unresolved unless a future extractor preserve
 
 Snapshot/Git isolation, path replacement defenses, parser memory/time enforcement, negative-query replay and citation integrity are constructed source controls whose effectiveness has not been exercised. The tool should fail closed where enforcement is unavailable. A static source inspection is not a security proof.
 
-Reports are local artifacts containing source excerpts. The static HTML escapes all source text, has no scripts or external resources, and does not render README HTML/links. Reopening reports must use the exact frozen snapshot, never current HEAD. This containment remains runtime unverified.
+Reports are local artifacts containing source excerpts. The static HTML escapes all source text, has no scripts or external resources, and does not render README HTML/links. Reopening reports must use the exact frozen snapshot, never current HEAD. JSON/JSONL artifacts are byte-exact data, not terminal-safe text, and reports must never be printed into CI/workflow logs. This containment remains runtime unverified.
+
+macOS is unsupported for hostile input: parser resource enforcement is unavailable there, so indexing refuses (`parser_enforcement_unavailable`, exit 2) rather than parsing unbounded. Windows and POSIX enforcement remain runtime unverified.
 
 Evaluation is not measured. Source provides descriptive counts, failure denominators, a conservative packet path baseline, whole-family bootstrap calculation and unknown-aware attempt summaries. Actual human labels, independent corpus custody, heldout access restrictions, executed paired-arm integration, live extraction/single-pass calls, measured intervals, observed provider/model identities, cost and latency measurements remain absent. No superiority, accuracy or hiring-value claim is made.
 

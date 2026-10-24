@@ -300,8 +300,18 @@ Input/integrity/incomplete audit errors take precedence over `--fail-on missing`
 No contracted path exits 1. A missing inner artifact inside an existing run or
 snapshot remains integrity (4), and an unreadable `report.json` during
 `--fail-on missing` is also 4. `verify-report`/`export-report` on a run that is not
-complete return that run's state through the shared `RUN_STATE_EXIT` table
-(`failed_input` 2, `incomplete` 3, `failed_integrity` 4).
+complete refuse with a state-specific code whose exit comes from the shared
+`RUN_STATE_EXIT` table: `run_failed_input` 2, `run_incomplete` 3,
+`run_failed_integrity` 4. A Git object whose bytes do not hash to its ID is
+`git_object_hash_mismatch` (4).
+
+CLI stdout/stderr JSON is ASCII-only, but run artifacts (`report.json`, JSONL,
+`RUN.json`) are data that can contain hostile source text: open them with a JSON
+reader, never `cat` them to a terminal. Never print reports or artifacts into
+CI/workflow logs (the Markdown/HTML display escapes line-leading `::`, but that is
+not log safety); upload them as files instead. macOS is unsupported for hostile
+input: parser resource enforcement is unavailable there, so indexing refuses with
+`parser_enforcement_unavailable` (2).
 `paired-run` and `paired-score` deliberately return 3 even when source-only assembly
 finishes. Inspect retained error/failure rows rather than interpreting a zero score
 or empty output as success. Do not delete budget locks/pending reservations to

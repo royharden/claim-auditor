@@ -20,7 +20,19 @@ parser time/memory enforcement must be real at execution; missing enforcement
 must fail setup rather than silently allow unbounded hostile parsing. An individual
 source file or blob over the per-file cap is recorded as unread excluded scope
 (snapshot incomplete, no absence claim); the aggregate text and compressed-copy caps
-still abort the snapshot.
+still abort the snapshot. Every Git commit, tree and blob object read is
+hash-verified against its object ID, and the file list comes from walking verified
+trees from the verified commit, so a tampered object store fails with
+`git_object_hash_mismatch` (4). Git itself is resolved only from absolute PATH
+entries, never the working directory, and on Windows only as `git.exe`.
+
+Output display: CLI terminal JSON is ASCII-only, and report Markdown/HTML escape
+source text and neutralize line-leading `::` (including after Unicode whitespace)
+for display. JSON/JSONL artifacts remain byte-exact data, not terminal-safe text.
+Do not print reports or artifacts into CI/workflow logs; publish them as uploaded
+files. Parser memory/time enforcement is unavailable on macOS, so the worker
+reports `enforced: false` and indexing refuses with `parser_enforcement_unavailable`
+(2); macOS is unsupported for hostile input.
 
 Live calls are absent from this construction baseline. Screening is a conservative
 input hold, not prompt-injection isolation or semantic proof. The durable accounting

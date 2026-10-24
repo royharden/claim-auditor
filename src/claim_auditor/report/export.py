@@ -229,7 +229,13 @@ def export_report(run_root: Path, out: Path, *, manifest_digest: str) -> dict[st
         # including changes to context/source files while another file was copied.
         for relative, (digest, size) in sorted(files.items()):
             _read_pinned(root, relative, digest, size)
-        reopened = verify_report(copied_root)
+        try:
+            reopened = verify_report(copied_root)
+        except AuditError as exc:
+            # The copy is tool-written and sealed: a missing RUN.json there is integrity (4), not operator input.
+            if exc.reason == "run_not_found":
+                raise AuditError("export_copy_identity", "copied closure RUN.json is missing", 4) from exc
+            raise
         if reopened != manifest or read_ordinary(copied_root, "RUN.json", 4 * 1024 * 1024) != raw_run:
             raise AuditError("export_copy_identity", "copied closure no longer equals the pinned canonical run", 4)
         for relative, (digest, size) in sorted(files.items()):

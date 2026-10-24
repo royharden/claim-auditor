@@ -47,8 +47,17 @@ failures remain `source_integrity` (exit 4).
 Exit 4 covers every already pinned, sealed or admitted artifact whose bytes or
 bindings changed; exit 2 stays for pre-start argument/config/admission refusals.
 `contracts.RUN_STATE_EXIT` (via `exit_for_state`) is the one run-state table:
-`complete` 0, `failed_input` 2, `incomplete` 3, `failed_integrity` 4; the CLI and
-`verify_report`'s `run_not_complete` both use it. A supplied snapshot root without a
+`complete` 0, `failed_input` 2, `incomplete` 3, `failed_integrity` 4; the CLI uses
+it. `contracts.RUN_STATE_REFUSAL` (via `refusal_for_state`) maps each non-complete
+state to its own refusal code, so `verify_report` on such a run raises
+`run_failed_input` (2), `run_failed_integrity` (4) or `run_incomplete` (3, every
+other non-complete state); the former shared `run_not_complete` no longer exists.
+Nested verification of a tool-written sealed copy translates `run_not_found`: a
+missing `RUN.json` in an export's copied closure is `export_copy_identity` (4), and
+a missing `RUN.json` under a paired run's `full-index-run` is
+`paired_artifact_integrity` (4). Local Git acquisition hash-verifies every commit,
+tree and blob object it reads against its ID (SHA-1 or SHA-256 by ID length); a
+mismatch is `git_object_hash_mismatch` (4). A supplied snapshot root without a
 top `manifest.json` is `snapshot_not_found` (2) and a supplied run root without
 `RUN.json` is `run_not_found` (2); missing inner artifacts remain integrity (4).
 `export_report` refuses traversing/UNC arguments as `invalid_export_path` (2), while

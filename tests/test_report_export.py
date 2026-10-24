@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from claim_auditor.audit.service import audit_snapshot
 from claim_auditor.citations import verify_report
-from claim_auditor.contracts import RUN_STATE_EXIT, AuditError, canonical_json, sha256
+from claim_auditor.contracts import RUN_STATE_EXIT, AuditError, canonical_json, refusal_for_state, sha256
 from claim_auditor.report.export import export_report
 from claim_auditor.report import export as export_module
 
@@ -77,17 +77,18 @@ class ReportExportTests(unittest.TestCase):
         self.assertFalse(out.exists())
 
     def test_incomplete_run_propagates_canonical_failure_without_copying(self):
-        """what_bug_this_catches: matching a manifest pin being mistaken for a complete report closure, or a
-        non-complete run state escaping the shared RUN_STATE_EXIT table (failed_input is 2, not 3)."""
+        """what_bug_this_catches: matching a manifest pin being mistaken for a complete report closure, or one
+        refusal code carrying several exits instead of one state-specific code per RUN_STATE_EXIT class."""
         run, manifest, _ = self.closed_run()
-        for state, exit_code in (("incomplete", 3), ("failed_input", 2), ("failed_integrity", 4)):
+        for state, reason, exit_code in (("incomplete", "run_incomplete", 3), ("failed_input", "run_failed_input", 2),
+                                         ("failed_integrity", "run_failed_integrity", 4)):
             raw = canonical_json(manifest.model_copy(update={"state": state})) + b"\n"
             (run / "RUN.json").write_bytes(raw)
             out = self.base / f"export-{state}"
             with self.subTest(state=state), self.assertRaises(AuditError) as caught:
                 export_report(run, out, manifest_digest=sha256(raw))
-            self.assertEqual((caught.exception.reason, caught.exception.exit_code), ("run_not_complete", exit_code))
-            self.assertEqual(exit_code, RUN_STATE_EXIT[state])
+            self.assertEqual((caught.exception.reason, caught.exception.exit_code), (reason, exit_code))
+            self.assertEqual(refusal_for_state(state), (reason, RUN_STATE_EXIT[state]))
             self.assertFalse(out.exists())
 
     def test_unlisted_control_file_is_neither_opened_nor_silently_omitted(self):
