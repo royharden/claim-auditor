@@ -1,10 +1,16 @@
 """Integrity regressions authored as source; execution requires later activation."""
 
+from contextlib import redirect_stderr
+import io
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
-from claim_auditor.citations import validate_coverage, validate_evidence, validate_span
+from claim_auditor import cli
+from claim_auditor.audit.service import audit_snapshot
+from claim_auditor.citations import validate_coverage, validate_evidence, validate_span, verify_report
 from claim_auditor.contracts import AuditError, canonical_json, sha256
 from claim_auditor.index import StaticIndex, resolve
 from claim_auditor.snapshot import load_snapshot, read_source
@@ -25,6 +31,39 @@ class IntegrityTests(unittest.TestCase):
                     operation()
                 self.assertEqual(caught.exception.exit_code, 4)
             self.assertIn(b"work", (base / "source" / "tiny.py").read_bytes())
+
+    def test_missing_supplied_roots_are_input_errors_not_integrity(self):
+        """what_bug_this_catches: a nonexistent user-supplied snapshot/run path reported as integrity failure (4) instead of input (2)."""
+        with TemporaryDirectory() as directory:
+            base = Path(directory)
+            out = base / "run"
+            with self.assertRaises(AuditError) as caught:
+                audit_snapshot(base / "no-such-snapshot", "README.md", "rules", out)
+            self.assertEqual((caught.exception.reason, caught.exception.exit_code), ("snapshot_not_found", 2))
+            self.assertFalse(out.exists())
+            with self.assertRaises(AuditError) as caught:
+                verify_report(base / "no-such-run")
+            self.assertEqual((caught.exception.reason, caught.exception.exit_code), ("run_not_found", 2))
+            # An existing run root missing an inner artifact remains integrity, not input.
+            _, root = frozen_source(base)
+            manifest = audit_snapshot(root, "README.md", "rules", out)
+            self.assertEqual(manifest.state, "complete")
+            (out / "report.json").unlink()
+            with self.assertRaises(AuditError) as caught:
+                verify_report(out)
+            self.assertEqual(caught.exception.exit_code, 4)
+
+    def test_cli_maps_missing_run_to_2_and_uncaught_failure_to_3(self):
+        """what_bug_this_catches: an uncaught exception escaping as an uncontracted exit 1/traceback, or a missing run root exiting 4."""
+        with TemporaryDirectory() as directory:
+            missing = Path(directory) / "no-such-run"
+            with redirect_stderr(io.StringIO()):
+                self.assertEqual(cli.main(["verify-report", str(missing)]), 2)
+            stderr = io.StringIO()
+            with patch("claim_auditor.citations.verify_report", side_effect=RuntimeError("synthetic fault")), \
+                    redirect_stderr(stderr):
+                self.assertEqual(cli.main(["verify-report", str(missing)]), 3)
+            self.assertEqual(json.loads(stderr.getvalue())["error"], "unexpected_failure")
 
     def test_wrong_snapshot_rejects_even_identical_quote_bytes(self):
         """what_bug_this_catches: quote equality substituting for snapshot identity."""

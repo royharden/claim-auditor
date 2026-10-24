@@ -42,8 +42,52 @@ A requested README with no snapshot entry is an input error
 example an unsupported encoding or lone-CR line endings) yields an incomplete
 `Inventory` with a `readme_excluded` pipeline error whose detail is the gap reason
 (exit 3). Only an included README reaches `read_source`, whose byte-identity
-failures remain `source_integrity` (exit 4). These mappings are constructed
-source; they have not been executed.
+failures remain `source_integrity` (exit 4).
+
+Exit 4 covers every already pinned, sealed or admitted artifact whose bytes or
+bindings changed; exit 2 stays for pre-start argument/config/admission refusals.
+`contracts.RUN_STATE_EXIT` (via `exit_for_state`) is the one run-state table:
+`complete` 0, `failed_input` 2, `incomplete` 3, `failed_integrity` 4; the CLI and
+`verify_report`'s `run_not_complete` both use it. A supplied snapshot root without a
+top `manifest.json` is `snapshot_not_found` (2) and a supplied run root without
+`RUN.json` is `run_not_found` (2); missing inner artifacts remain integrity (4).
+`export_report` refuses traversing/UNC arguments as `invalid_export_path` (2), while
+links/reparse points or non-ordinary entries inside the run tree stay
+`unsafe_export_path` (4). An uncaught CLI exception is `unexpected_failure` (3).
+
+Each reason code has exactly one exit class. Evaluation-side applications of the
+exit-4 rule (changed pinned/sealed artifacts) are: DEV custody
+`dev_source_inventory_changed`, `dev_seal_changed`, `dev_manifest_changed`,
+`dev_stage_artifact_changed`, `dev_source_manifest_changed`,
+`dev_label_source_changed` and `dev_label_evidence_changed`; dataset
+`dataset_manifest_changed`, `dataset_source_changed`, `dataset_protocol_changed`
+and `dataset_gold_changed`; manual annotation `manual_parent_changed`,
+`manual_atom_changed`, `manual_annotation_digest`, `manual_source_changed`,
+`manual_inventory_changed`, `manual_ruling_history_changed` and
+`manual_candidate_source_changed`; rulings `ruling_digest_mismatch`,
+`ruling_claim_changed`, `ruling_source_changed`, `ruling_binding_changed`,
+`ruling_ledger_changed`, `annotation_report_changed` and
+`annotation_source_changed`; plus `source_seal_mismatch`,
+`replay_identity_mismatch`, `paired_gold_seal_mismatch` and
+`evaluation_lock_digest_mismatch`. Other custody, dataset, manual and ruling
+refusals (missing, conflicting, out-of-scope or over-limit inputs) stay input (2).
+`unsettled_liability`, `parser_invalid_output` and `paired_dispatch_unbound` are
+incomplete (3). Setup refusals that formerly shared an integrity code were renamed
+and stay input (2): `transport_admission_binding` and `budget_admission_required`
+(`budget_admission_mismatch` is now always 4), and
+`undeclared_experiment_control` (`paired_invalid_artifact` is now always 4).
+`invalid_ledger_scope`, `invalid_reconciliation_role` and
+`reconciliation_scope_required` are input (2). Pre-start admission/config refusals
+and input-schema checks remain 2.
+
+A source file over the per-file cap (512 KiB) is not read. Its `SnapshotEntry` is
+`excluded` with a `file_byte_limit` `ScopeGap`, so the snapshot is incomplete and
+absence is never established. The entry `sha256` is the marker
+`snapshot.unread_entry_digest("file_byte_limit", size, object_id)`, not a content
+digest. A fixture marker binds only size; a Git marker binds the blob object ID.
+The aggregate text cap, the compressed object-copy cap and commit-object reads still
+abort snapshot creation. These mappings are constructed source; they have not been
+executed.
 
 Live transport is disabled. Replay requires input/prompt/model/policy identities
 and independently recognized atoms, is visibly replay, and supplies no live quality

@@ -14,11 +14,18 @@ from claim_auditor.provenance import context_bytes, validate_report_context
 from claim_auditor.report.demo import create_demo_source
 
 
+def _display(text: str) -> str:
+    # Display only: escape controls, then make line-leading `::` workflow-command syntax inert.
+    # Stored quotes, JSON artifacts and digests keep the exact bytes.
+    # Any leading Unicode whitespace counts: the Actions runner trims it before matching `::`.
+    return re.sub(r"(?m)^([^\S\n]*)::", r"\1\\::", safe_display(text))
+
+
 def _fenced(text: str) -> str:
     # A dynamically longer fence prevents source text closing its own code block.
     longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
     delimiter = "`" * max(3, longest + 1)
-    return f"{delimiter}text\n{safe_display(text)}\n{delimiter}"
+    return f"{delimiter}text\n{_display(text)}\n{delimiter}"
 
 
 def _summary(report: AuditReport) -> list[tuple[str, str]]:
@@ -113,7 +120,7 @@ def render_markdown(report: AuditReport) -> str:
 
 def render_html(report: AuditReport) -> str:
     def escaped(value: object) -> str:
-        return html.escape(safe_display(str(value)), quote=True)
+        return html.escape(_display(str(value)), quote=True)
 
     def pre(value: str) -> str:
         return "<pre>" + escaped(value) + "</pre>"

@@ -64,10 +64,11 @@ class CustodyBoundaryTests(unittest.TestCase):
             root = Path(directory)
             # This is a malformed negative artifact, not a measured passing seal.
             (root / "SEAL.json").write_bytes(b"{}")
-            for pin, reason in (("", "invalid_dev_seal"), ("0" * 64, "dev_seal_changed")):
+            # A missing pin is an input refusal (2); a pinned seal whose bytes changed is integrity (4).
+            for pin, reason, exit_code in (("", "invalid_dev_seal", 2), ("0" * 64, "dev_seal_changed", 4)):
                 with self.subTest(pin=pin), self.assertRaises(AuditError) as caught:
                     verify_dev_stage(root, expected_seal_digest=pin)
-                self.assertEqual(caught.exception.reason, reason)
+                self.assertEqual((caught.exception.reason, caught.exception.exit_code), (reason, exit_code))
 
     def test_source_and_label_exports_verify_before_creating_output(self):
         """what_bug_this_catches: export wrappers copying source or labels before source-seal verification."""

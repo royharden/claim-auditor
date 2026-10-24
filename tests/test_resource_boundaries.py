@@ -12,8 +12,8 @@ from claim_auditor.audit.policy import decide_finding
 from claim_auditor.contracts import AuditError, canonical_json
 from claim_auditor.index import StaticIndex, build_index, resolve
 from claim_auditor.inventory import extract_inventory
-from claim_auditor.snapshot import create_fixture_snapshot, create_git_snapshot, read_source
-from claim_auditor.snapshot.safeio import MAX_FILE_BYTES
+from claim_auditor.snapshot import create_fixture_snapshot, create_git_snapshot, read_source, unread_entry_digest
+from claim_auditor.snapshot.safeio import MAX_FILE_BYTES, read_ordinary
 
 from .git_fixture import GitFixture
 from .support import claim, frozen_source, predicate, span_for
@@ -85,19 +85,29 @@ class ResourceBoundaryTests(unittest.TestCase):
                 extract_inventory(snapshot, root, "docs/MISSING.md")
             self.assertEqual((caught.exception.reason, caught.exception.exit_code), ("readme_not_in_snapshot", 2))
 
-    def test_source_file_byte_cap_leaves_no_complete_manifest(self):
-        """what_bug_this_catches: an oversized source file being admitted or published as a complete snapshot."""
+    def test_source_file_byte_cap_excludes_entry_without_reading_or_completing(self):
+        """what_bug_this_catches: an oversized source file being read, admitted, or published inside a complete snapshot."""
         with TemporaryDirectory() as directory:
             base = Path(directory)
             source = base / "source"
             source.mkdir()
-            (source / "big.py").write_bytes(b"x" * (MAX_FILE_BYTES + 1))
+            size = MAX_FILE_BYTES + 1
+            (source / "big.py").write_bytes(b"x" * size)
+            (source / "tiny.py").write_bytes(b"def work():\n    pass\n")
             out = base / "snapshot"
+            with patch("claim_auditor.snapshot.read_ordinary", wraps=read_ordinary) as read:
+                snapshot = create_fixture_snapshot(source, out)
+            self.assertNotIn("big.py", {str(call.args[1]) for call in read.call_args_list})
+            self.assertFalse(snapshot.complete)
+            entry = next(entry for entry in snapshot.entries if entry.path == "big.py")
+            self.assertEqual((entry.status, entry.size), ("excluded", size))
+            self.assertEqual(entry.sha256, unread_entry_digest("file_byte_limit", size))
+            self.assertIn(("big.py", "file_byte_limit"), {(gap.path, gap.reason) for gap in snapshot.exclusions})
+            self.assertEqual(next(entry.status for entry in snapshot.entries if entry.path == "tiny.py"), "included")
+            self.assertFalse((out / "files" / "big.py").exists())
             with self.assertRaises(AuditError) as caught:
-                create_fixture_snapshot(source, out)
-            self.assertEqual(caught.exception.reason, "snapshot_input")
-            self.assertIn("file_byte_limit", caught.exception.detail)
-            self.assertFalse((out / "manifest.json").exists())
+                read_source(snapshot, out, "big.py")
+            self.assertEqual(caught.exception.exit_code, 4)
 
     def test_total_text_cap_is_shared_across_files(self):
         """what_bug_this_catches: enforcing each file cap while ignoring the combined snapshot text liability."""
@@ -126,12 +136,14 @@ class ResourceBoundaryTests(unittest.TestCase):
                 with self.assertRaises(AuditError) as caught:
                     create_git_snapshot(fixture.root, fixture.head, out)
             self.assertEqual(caught.exception.reason, "git_snapshot_input")
+            # The aggregate compressed-copy cap still aborts (only per-file blob caps became excluded scope).
+            # The remaining allowance is passed to read_ordinary, so the copy may stop with its own cap reason.
             self.assertTrue(any(reason in caught.exception.detail for reason in
                                 ("file_byte_limit", "compressed_object_byte_limit")))
             self.assertFalse((out / "manifest.json").exists())
 
     def test_small_compressed_object_cannot_bypass_decompressed_blob_cap(self):
-        """what_bug_this_catches: treating compressed-object size as a bound on expanded source bytes."""
+        """what_bug_this_catches: treating compressed-object size as a bound on expanded source bytes, or reading an over-cap blob."""
         with TemporaryDirectory() as directory:
             base = Path(directory)
             raw = b"x\n" * (MAX_FILE_BYTES // 2 + 1)
@@ -139,12 +151,16 @@ class ResourceBoundaryTests(unittest.TestCase):
             objects = fixture.root / ".git" / "objects"
             compressed = sum(path.stat().st_size for path in objects.rglob("*") if path.is_file())
             self.assertLess(compressed, MAX_FILE_BYTES)  # Positive compressed-vs-expanded control.
+            oid = fixture.git("rev-parse", "HEAD:big.py").decode("ascii").strip()
             out = base / "snapshot"
-            with self.assertRaises(AuditError) as caught:
-                create_git_snapshot(fixture.root, fixture.head, out)
-            self.assertEqual(caught.exception.reason, "git_snapshot_input")
-            self.assertIn("decompressed_object_byte_limit", caught.exception.detail)
-            self.assertFalse((out / "manifest.json").exists())
+            snapshot = create_git_snapshot(fixture.root, fixture.head, out)
+            self.assertFalse(snapshot.complete)
+            entry = next(entry for entry in snapshot.entries if entry.path == "big.py")
+            self.assertEqual((entry.status, entry.size), ("excluded", len(raw)))
+            # Expanded size comes from batch-check; the marker binds the object ID, never unread content.
+            self.assertEqual(entry.sha256, unread_entry_digest("file_byte_limit", len(raw), oid))
+            self.assertIn(("big.py", "file_byte_limit"), {(gap.path, gap.reason) for gap in snapshot.exclusions})
+            self.assertFalse((out / "files" / "big.py").exists())
 
     def test_missing_memory_enforcement_refuses_without_inprocess_fallback(self):
         """what_bug_this_catches: unavailable OS memory enforcement falling back to an unbounded parser."""

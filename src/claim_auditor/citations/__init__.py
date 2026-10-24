@@ -6,7 +6,7 @@ from pathlib import Path
 
 from claim_auditor.contracts import (
     AuditError, AuditReport, CoverageReport, Evidence, PredictionRow, RunManifest, Snapshot, Span,
-    canonical_json, exit_for_state, sha256,
+    canonical_json, refusal_for_state, sha256,
 )
 from claim_auditor.index import INDEX_VERSION, PARSER_VERSION, StaticIndex, build_index, resolve
 from claim_auditor.patterns import PATTERN_VERSION
@@ -97,7 +97,8 @@ def verify_report(run_root: Path) -> RunManifest:
     try:
         manifest = RunManifest.model_validate_json(read_ordinary(root, "RUN.json", 4 * 1024 * 1024))
         if manifest.state != "complete":
-            raise AuditError("run_not_complete", manifest.state, exit_for_state(manifest.state))
+            reason, code = refusal_for_state(manifest.state)
+            raise AuditError(reason, manifest.state, code)
         if manifest.completed_at is None or manifest.errors:
             raise AuditError("invalid_completed_run", manifest.run_id, 4)
         required = {"report.json", "inventory.json", "claims.jsonl", "findings.jsonl", "evidence.jsonl", "coverage.jsonl", "predictions.jsonl", "report.md", "report.html", "context.json", "context.jsonl"}

@@ -16,7 +16,7 @@ from claim_auditor.contracts import (
 from claim_auditor.evaluation.scoring import MATCHER_VERSION
 from claim_auditor.inventory.raw import RawDocument
 from claim_auditor.snapshot import load_snapshot, read_source
-from claim_auditor.snapshot.safeio import read_ordinary
+from claim_auditor.snapshot.safeio import MAX_FILE_BYTES, read_ordinary
 
 PACKET_VERSION = "readme-anchors/1"
 _REQUIRED_ARMS = {"product_full_index", "packet_candidate", "packet_grep", "live_extraction", "live_single_pass"}
@@ -58,14 +58,17 @@ def _build_packet(snapshot: Snapshot, input_path: Path) -> EvaluationPacket:
     """Sole raw-anchor builder shared by DEV and admitted preparation."""
     readme_path = "README.md"
     # Same lookup as inventory.extract_inventory: a README absent from the snapshot is an
-    # input error (2); one excluded at snapshot time keeps its gap reason and raw digest.
+    # input error (2); one excluded at snapshot time keeps its gap reason and entry digest.
     # Only included sources reach read_source, whose failures are integrity (4).
     entry = next((item for item in snapshot.entries if item.path == readme_path), None)
     if entry is None:
         raise AuditError("readme_not_in_snapshot", readme_path, 2)
     if entry.status != "included":
         gap = next((item.reason for item in snapshot.exclusions if item.path == readme_path), entry.status)
-        detail = f"{gap}; raw sha256 {entry.sha256}"
+        # An entry over the per-file read cap was never read: its digest is the snapshot's
+        # unread marker, not content. A README between the README and file caps was read.
+        label = "unread-marker digest" if entry.size > MAX_FILE_BYTES else "raw sha256"
+        detail = f"{gap}; {label} {entry.sha256}"
         if gap == "file_byte_limit":
             raise AuditError("input_too_large", f"mandatory README exceeds policy; every paired arm must retain this failure ({detail})")
         if gap == "unsupported_encoding":

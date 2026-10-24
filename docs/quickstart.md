@@ -291,12 +291,17 @@ results, real custody admission, human review or independent product acceptance.
 | Exit | Meaning |
 |---|---|
 | 0 | Requested local source/artifact operation completed; no product acceptance implied |
-| 2 | Invalid arguments/input/setup, including a `--readme` path absent from the snapshot (`readme_not_in_snapshot`); inspect the structured error |
-| 3 | Incomplete audit (including a README excluded at snapshot time, `readme_excluded`), unresolved liability, or intentionally incomplete fake/replay comparison |
-| 4 | Integrity/citation/pinned-identity failure; preserve the artifacts |
+| 2 | Invalid arguments/input/setup, including a supplied snapshot or run path that does not exist (`snapshot_not_found`, `run_not_found`), a traversing/UNC export argument (`invalid_export_path`) and a `--readme` path absent from the snapshot (`readme_not_in_snapshot`); inspect the structured error |
+| 3 | Incomplete audit (including a README excluded at snapshot time, `readme_excluded`), unresolved liability, intentionally incomplete fake/replay comparison, or an unexpected uncaught failure (`unexpected_failure`) |
+| 4 | Integrity failure of any already pinned, sealed or admitted artifact: report, citation and snapshot bytes, and evaluation/custody/dataset/annotation/ruling artifacts whose bytes or bindings changed after a pin, seal or verified pass; preserve the artifacts |
 | 5 | Complete audit hit explicitly requested `--fail-on missing` |
 
 Input/integrity/incomplete audit errors take precedence over `--fail-on missing`.
+No contracted path exits 1. A missing inner artifact inside an existing run or
+snapshot remains integrity (4), and an unreadable `report.json` during
+`--fail-on missing` is also 4. `verify-report`/`export-report` on a run that is not
+complete return that run's state through the shared `RUN_STATE_EXIT` table
+(`failed_input` 2, `incomplete` 3, `failed_integrity` 4).
 `paired-run` and `paired-score` deliberately return 3 even when source-only assembly
 finishes. Inspect retained error/failure rows rather than interpreting a zero score
 or empty output as success. Do not delete budget locks/pending reservations to

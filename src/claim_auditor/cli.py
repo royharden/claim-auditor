@@ -143,6 +143,12 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _terminal_json(value: object) -> bytes:
+    """Terminal-safe JSON: every non-ASCII (C1, bidi, zero-width) escaped. Artifacts keep canonical_json."""
+    return json.dumps(json.loads(canonical_json(value)), ensure_ascii=True, sort_keys=True,
+                      separators=(",", ":"), allow_nan=False).encode("ascii")
+
+
 def _exit_for_manifest(manifest: object) -> int:
     return exit_for_state(getattr(manifest, "state"))
 
@@ -218,7 +224,7 @@ def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | Non
                 if args.commit is not None:
                     raise AuditError("fixture_commit_forbidden", "Fixture source cannot claim a Git commit.")
                 result = create_fixture_snapshot(args.fixture, args.out)
-            print(canonical_json(result).decode("utf-8"))
+            print(_terminal_json(result).decode("utf-8"))
             return 0
         if args.command == "audit":
             from .audit import audit_snapshot
@@ -229,7 +235,7 @@ def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | Non
                 replay_path=args.replay, prompt_digest=args.prompt_digest, model=args.model,
                 declarations=_run_declarations(args.declarations),
             )
-            print(canonical_json(result).decode("utf-8"))
+            print(_terminal_json(result).decode("utf-8"))
             status = _exit_for_manifest(result)
             if status == 0 and args.fail_on == "missing":
                 from .snapshot.safeio import read_ordinary
@@ -246,14 +252,14 @@ def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | Non
             from .citations import verify_report
 
             result = verify_report(args.run)
-            print(canonical_json(result).decode("utf-8"))
+            print(_terminal_json(result).decode("utf-8"))
             return _exit_for_manifest(result)
         if args.command == "export-report":
             from .report.export import export_report
 
             print("Local export includes frozen source that may be private; no publication permission is granted.", file=sys.stderr)
             result = export_report(args.run, args.out, manifest_digest=args.manifest_digest)
-            print(canonical_json(result).decode("utf-8"))
+            print(_terminal_json(result).decode("utf-8"))
             return 0
         if args.command == "demo":
             from .audit import audit_snapshot
@@ -269,21 +275,21 @@ def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | Non
             create_fixture_snapshot(source, args.out / "snapshot")
             result = audit_snapshot(args.out / "snapshot", "README.md", "rules", args.out / "run",
                                     declarations=declarations)
-            print(canonical_json(result).decode("utf-8"))
+            print(_terminal_json(result).decode("utf-8"))
             print("Runtime/product acceptance unverified; comparative results not measured.", file=sys.stderr)
             return _exit_for_manifest(result)
         if args.command == "eval":
             from .evaluation import prepare_evaluation
 
             result = prepare_evaluation(args.protocol, args.input, args.out)
-            print(canonical_json(result).decode("utf-8"))
+            print(_terminal_json(result).decode("utf-8"))
             print("not measured / comparative acceptance incomplete", file=sys.stderr)
             return 3  # preparing a packet is not a completed comparison
         if args.command == "score":
             from .evaluation import score_predictions
 
             result = score_predictions(args.predictions, args.gold, args.out)
-            print(canonical_json(result).decode("utf-8"))
+            print(_terminal_json(result).decode("utf-8"))
             return 0
         if args.command == "paired-run":
             from .contracts import EvaluationPacket, PairedRunConfig
@@ -301,7 +307,7 @@ def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | Non
             result = run_paired(packet, args.snapshot, args.out, transports=transports,
                                 caps=config.caps, prompts=config.prompts, models=config.models,
                                 include_full_index=config.include_full_index)
-            print(canonical_json(result).decode("utf-8"))
+            print(_terminal_json(result).decode("utf-8"))
             print("fake/replay source assembly; runtime unverified; not measured / comparative acceptance incomplete", file=sys.stderr)
             return 3
         if args.command == "annotation-package":
@@ -318,25 +324,25 @@ def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | Non
                     raise AuditError("unexpected_readme_option", "Assisted review uses the verified report's own README identity.")
                 digest = prepare_annotation_package(args.run, args.out, family_id=args.family_id)
                 review_mode = "report_assisted"
-            print(canonical_json({"package_digest": digest, "human_review_performed": False,
+            print(_terminal_json({"package_digest": digest, "human_review_performed": False,
                                   "gold_created": False, "review_mode": review_mode}).decode("utf-8"))
             return 0
         if args.command == "rulings-import":
             from .evaluation.rulings import import_rulings
 
             added = import_rulings(args.ledger, args.input, human_confirmation=args.confirm_human_action)
-            print(canonical_json({"appended": len(added), "consensus_created": False}).decode("utf-8"))
+            print(_terminal_json({"appended": len(added), "consensus_created": False}).decode("utf-8"))
             return 0
         if args.command == "rulings-export":
             from .evaluation.rulings import export_rulings
 
-            print(canonical_json({"export_digest": export_rulings(args.ledger, args.out)}).decode("utf-8"))
+            print(_terminal_json({"export_digest": export_rulings(args.ledger, args.out)}).decode("utf-8"))
             return 0
         if args.command == "paired-verify":
             from .evaluation import verify_paired
 
             result = verify_paired(args.run, args.snapshot, manifest_digest=args.manifest_digest)
-            print(canonical_json({"manifest_digest": result["manifest_digest"],
+            print(_terminal_json({"manifest_digest": result["manifest_digest"],
                                   "externally_pinned": args.manifest_digest is not None,
                                   "comparative_complete": False,
                                   "human_adjudicated": False}).decode("utf-8"))
@@ -346,7 +352,7 @@ def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | Non
 
             result = score_paired(args.run, args.snapshot, args.gold, args.out,
                                   manifest_digest=args.manifest_digest)
-            print(canonical_json(result).decode("utf-8"))
+            print(_terminal_json(result).decode("utf-8"))
             print("scoring does not complete actual live/human comparative acceptance", file=sys.stderr)
             return 3
         if args.command == "dev-stage":
@@ -356,7 +362,7 @@ def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | Non
                                       provenance_path=args.provenance,
                                       access_receipt_path=args.access_receipt,
                                       designation="DEV_ONLY", admission_requested=False)
-            print(canonical_json({"seal_digest": digest, "designation": "DEV_ONLY",
+            print(_terminal_json({"seal_digest": digest, "designation": "DEV_ONLY",
                                   "custody_verified": False, "heldout": False,
                                   "admitted": False}).decode("utf-8"))
             return 0
@@ -364,7 +370,7 @@ def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | Non
             from .evaluation.custody import export_dev_source
 
             digest = export_dev_source(args.stage, args.out, expected_seal_digest=args.seal_digest)
-            print(canonical_json({"source_manifest_digest": digest, "designation": "DEV_ONLY",
+            print(_terminal_json({"source_manifest_digest": digest, "designation": "DEV_ONLY",
                                   "custody_verified": False, "heldout": False,
                                   "admitted": False}).decode("utf-8"))
             return 0
@@ -372,14 +378,14 @@ def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | Non
             from .providers.config import write_fake_config
 
             write_fake_config(args.packet, args.out)
-            print(canonical_json({"mode": "fake", "fixture_status": "fixture_not_supplied",
+            print(_terminal_json({"mode": "fake", "fixture_status": "fixture_not_supplied",
                                   "predictions_created": False, "comparative_complete": False}).decode("utf-8"))
             return 0
         if args.command == "dev-packet":
             from .evaluation.packet import prepare_dev_packet
 
             packet = prepare_dev_packet(args.snapshot, args.out)
-            print(canonical_json({"packet_digest": packet.packet_digest, "designation": "DEV_ONLY",
+            print(_terminal_json({"packet_digest": packet.packet_digest, "designation": "DEV_ONLY",
                                   "source_only": True, "admitted": False,
                                   "comparative_complete": False}).decode("utf-8"))
             return 0
@@ -393,7 +399,7 @@ def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | Non
                                                recorded_at=draft.recorded_at, action_id=draft.action_id,
                                                previous_path=args.previous,
                                                human_confirmation=args.confirm_human_action)
-            print(canonical_json(result).decode("utf-8"))
+            print(_terminal_json(result).decode("utf-8"))
             return 0
         if args.command == "annotation-ruling":
             from .contracts import GoldAtom
@@ -406,7 +412,7 @@ def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | Non
                                        human_action_id=args.human_action_id,
                                        supersedes_ruling_id=args.supersedes_ruling_id,
                                        human_confirmation=args.confirm_human_action)
-            print(canonical_json(row).decode("utf-8"))
+            print(_terminal_json(row).decode("utf-8"))
             return 0
         if args.command == "annotation-export":
             from .contracts import ManualExportConfig
@@ -433,7 +439,7 @@ def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | Non
                 digest = export_manual_proposals(args.snapshot, args.annotation, args.ledger, args.out,
                                                   evidence_files=evidence, ruling_ids=config.ruling_ids)
                 release_kind = "agent_preliminary_proposals"
-            print(canonical_json({"export_digest": digest, "mode": release_kind,
+            print(_terminal_json({"export_digest": digest, "mode": release_kind,
                                   "custody_verified": False, "heldout": False,
                                   "admitted": False, "comparative_complete": False}).decode("utf-8"))
             return 0
@@ -461,7 +467,7 @@ def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | Non
                                          ledger_root=owner_context.ledger_root,
                                          budget_admission=owner_context.budget_admission,
                                          settlement_observers=owner_context.settlement_observers)
-            print(canonical_json(result).decode("utf-8"))
+            print(_terminal_json(result).decode("utf-8"))
             print("owner-enabled experiment source; comparative/human/product acceptance remains incomplete", file=sys.stderr)
             return 3
         if args.command == "dataset-score":
@@ -471,14 +477,14 @@ def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | Non
                 if args.out is not None:
                     raise AuditError("unexpected_output_option", "Dataset preflight does not write scores; omit --out.")
                 preflight_dataset(args.manifest, manifest_digest=args.manifest_digest)
-                print(canonical_json({"manifest_digest": args.manifest_digest,
+                print(_terminal_json({"manifest_digest": args.manifest_digest,
                                       "mode": "preflight_only", "scores_created": False,
                                       "comparative_complete": False}).decode("utf-8"))
                 return 0
             if args.out is None:
                 raise AuditError("output_required", "Dataset scoring requires a fresh --out directory.")
             result = evaluate_dataset(args.manifest, args.out, manifest_digest=args.manifest_digest)
-            print(canonical_json(result).decode("utf-8"))
+            print(_terminal_json(result).decode("utf-8"))
             print("dataset output is not independent product or custody acceptance", file=sys.stderr)
             return 3
         if args.command == "budget-reconcile":
@@ -497,18 +503,18 @@ def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | Non
             state = reconcile_configured_budget(owner_context=owner_context, config=config, role=args.role,
                                                 record=record, usage_receipt_data=usage_receipt_data,
                                                 pricing_receipt_data=pricing_receipt_data)
-            print(canonical_json(state).decode("utf-8"))
+            print(_terminal_json(state).decode("utf-8"))
             return 0
         raise AuditError("unknown_command", "No handler for requested command.")
     except AuditError as exc:
-        print(canonical_json({"error": exc.reason, "detail": exc.detail}).decode("utf-8"), file=sys.stderr)
+        print(_terminal_json({"error": exc.reason, "detail": exc.detail}).decode("utf-8"), file=sys.stderr)
         return exc.exit_code
     except (ValidationError, ValueError, UnicodeError, OSError, RecursionError, MemoryError) as exc:
-        print(canonical_json({"error": "invalid_input", "detail": str(exc)}).decode("utf-8"), file=sys.stderr)
+        print(_terminal_json({"error": "invalid_input", "detail": str(exc)}).decode("utf-8"), file=sys.stderr)
         return 2
     except Exception as exc:
         # Unexpected execution failure is an incomplete run (3), never an uncontracted exit 1.
-        print(canonical_json({"error": "unexpected_failure", "detail": f"{type(exc).__name__}: {exc}"}).decode("utf-8"), file=sys.stderr)
+        print(_terminal_json({"error": "unexpected_failure", "detail": f"{type(exc).__name__}: {exc}"}).decode("utf-8"), file=sys.stderr)
         return 3
 
 

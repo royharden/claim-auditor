@@ -85,7 +85,8 @@ class DatasetTests(unittest.TestCase):
         out = self.base / "gold-refusal"
         with self.assertRaises(AuditError) as caught:
             evaluate_dataset(self.fixture.path, out, manifest_digest=self.fixture.pin)
-        self.assertEqual(caught.exception.reason, "dataset_gold_changed")
+        # Gold bytes changed after the curator pin: integrity (4), not input (2).
+        self.assertEqual((caught.exception.reason, caught.exception.exit_code), ("dataset_gold_changed", 4))
         self.assertFalse((out / "DATASET.json").exists())
         failed = json.loads((out / "FAILED.json").read_bytes())
         self.assertEqual(failed["phase"], "gold_binding_after_all_inference_closed")

@@ -73,7 +73,7 @@ class RulingTests(unittest.TestCase):
         for changes in ({"evidence": "1" * 64}, {"manifest": "2" * 64}):
             with self.subTest(changes=changes), self.assertRaises(AuditError) as caught:
                 self.current(**changes)
-            self.assertEqual(caught.exception.reason, "ruling_binding_changed")
+            self.assertEqual((caught.exception.reason, caught.exception.exit_code), ("ruling_binding_changed", 4))
         self.assertEqual(self.ledger.read_bytes(), before)
 
     def test_another_annotator_cannot_rebind_same_subject(self):
@@ -85,7 +85,7 @@ class RulingTests(unittest.TestCase):
         before = self.ledger.read_bytes()
         with self.assertRaises(AuditError) as caught:
             append_ruling(self.ledger, incoming)
-        self.assertEqual(caught.exception.reason, "ruling_binding_changed")
+        self.assertEqual((caught.exception.reason, caught.exception.exit_code), ("ruling_binding_changed", 4))
         self.assertEqual(self.ledger.read_bytes(), before)
 
     def test_revision_must_supersede_latest_and_preserve_disagreement(self):

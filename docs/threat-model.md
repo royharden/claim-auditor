@@ -17,7 +17,10 @@ Local Git ingestion isolates target objects from target configuration, hooks,
 attributes, refs and inherited Git environment. Shallow/alternate/promisor stores
 and worktree indirection are unsupported. Blob size/entry/stream/deadline caps and
 parser time/memory enforcement must be real at execution; missing enforcement
-must fail setup rather than silently allow unbounded hostile parsing.
+must fail setup rather than silently allow unbounded hostile parsing. An individual
+source file or blob over the per-file cap is recorded as unread excluded scope
+(snapshot incomplete, no absence claim); the aggregate text and compressed-copy caps
+still abort the snapshot.
 
 Live calls are absent from this construction baseline. Screening is a conservative
 input hold, not prompt-injection isolation or semantic proof. The durable accounting

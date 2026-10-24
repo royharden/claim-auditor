@@ -590,6 +590,14 @@ def exit_for_state(state: str) -> int:
     return RUN_STATE_EXIT.get(state, 3)
 
 
+# Refusal code for verifying a non-complete run: one code, one exit, keyed beside RUN_STATE_EXIT.
+RUN_STATE_REFUSAL = {"failed_input": "run_failed_input", "failed_integrity": "run_failed_integrity"}
+
+
+def refusal_for_state(state: str) -> tuple[str, int]:
+    return RUN_STATE_REFUSAL.get(state, "run_incomplete"), exit_for_state(state)
+
+
 class ProviderCaps(WireModel):
     """Shared per-packet ceilings and worst-case liability per physical attempt."""
 

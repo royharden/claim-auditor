@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from claim_auditor.audit.service import audit_snapshot
 from claim_auditor.citations import verify_report
-from claim_auditor.contracts import AuditError, canonical_json, sha256
+from claim_auditor.contracts import RUN_STATE_EXIT, AuditError, canonical_json, sha256
 from claim_auditor.report.export import export_report
 from claim_auditor.report import export as export_module
 
@@ -77,15 +77,18 @@ class ReportExportTests(unittest.TestCase):
         self.assertFalse(out.exists())
 
     def test_incomplete_run_propagates_canonical_failure_without_copying(self):
-        """what_bug_this_catches: matching a manifest pin being mistaken for a complete report closure."""
+        """what_bug_this_catches: matching a manifest pin being mistaken for a complete report closure, or a
+        non-complete run state escaping the shared RUN_STATE_EXIT table (failed_input is 2, not 3)."""
         run, manifest, _ = self.closed_run()
-        raw = canonical_json(manifest.model_copy(update={"state": "incomplete"})) + b"\n"
-        (run / "RUN.json").write_bytes(raw)
-        out = self.base / "export"
-        with self.assertRaises(AuditError) as caught:
-            export_report(run, out, manifest_digest=sha256(raw))
-        self.assertEqual(caught.exception.reason, "run_not_complete")
-        self.assertFalse(out.exists())
+        for state, exit_code in (("incomplete", 3), ("failed_input", 2), ("failed_integrity", 4)):
+            raw = canonical_json(manifest.model_copy(update={"state": state})) + b"\n"
+            (run / "RUN.json").write_bytes(raw)
+            out = self.base / f"export-{state}"
+            with self.subTest(state=state), self.assertRaises(AuditError) as caught:
+                export_report(run, out, manifest_digest=sha256(raw))
+            self.assertEqual((caught.exception.reason, caught.exception.exit_code), ("run_not_complete", exit_code))
+            self.assertEqual(exit_code, RUN_STATE_EXIT[state])
+            self.assertFalse(out.exists())
 
     def test_unlisted_control_file_is_neither_opened_nor_silently_omitted(self):
         """what_bug_this_catches: broad directory copying or dropping private extras while advertising a closed export."""
@@ -122,8 +125,22 @@ class ReportExportTests(unittest.TestCase):
         with patch.object(Path, "lstat", new=reparse):
             with self.assertRaises(AuditError) as caught:
                 export_report(run, out, manifest_digest=pin)
-        self.assertEqual(caught.exception.reason, "unsafe_export_path")
+        # Run-tree link/entry refusals keep unsafe_export_path (integrity, 4); argument paths use invalid_export_path (2).
+        self.assertEqual((caught.exception.reason, caught.exception.exit_code), ("unsafe_export_path", 4))
         self.assertFalse(out.exists())
+
+    def test_traversing_or_unc_argument_path_is_input_error_before_reading(self):
+        """what_bug_this_catches: a bad source/destination argument reported as run integrity (4) or opening the run first."""
+        run, _, pin = self.closed_run()
+        for source, out in ((run / ".." / run.name, self.base / "export"),
+                            (run, self.base / "nested" / ".." / "export"),
+                            (Path("//server/share/run"), self.base / "export")):
+            with self.subTest(source=str(source), out=str(out)), \
+                    patch.object(export_module, "read_ordinary", side_effect=AssertionError("must refuse before reading")), \
+                    self.assertRaises(AuditError) as caught:
+                export_report(source, out, manifest_digest=pin)
+            self.assertEqual((caught.exception.reason, caught.exception.exit_code), ("invalid_export_path", 2))
+            self.assertFalse((self.base / "export").exists())
 
     def test_required_agent_control_source_refuses_whole_export_without_reading_or_omission(self):
         """what_bug_this_catches: removing a required unsafe source file while claiming a complete evidence copy."""

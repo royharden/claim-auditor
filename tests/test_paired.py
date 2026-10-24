@@ -7,6 +7,7 @@ import unittest
 
 from claim_auditor.contracts import AuditError, PredictionRow, canonical_json, sha256
 from claim_auditor.evaluation.runner import PAIRED_ARMS, run_paired
+from claim_auditor.evaluation.verify import verify_paired
 from claim_auditor.providers.port import FakeTransport
 from claim_auditor.snapshot import read_source
 
@@ -111,3 +112,12 @@ class PairedTests(unittest.TestCase):
             self.assertTrue(rows)
             self.assertTrue(all(row.status != "prediction" for row in rows))
         self.assertEqual(json.loads((self.out / "PAIRED.json").read_bytes())["state"], "failed_input")
+
+    def test_failed_input_from_changed_sealed_packet_is_integrity_not_tolerated_closure(self):
+        """what_bug_this_catches: a failed_input run whose packet digest was changed being certified as a
+        tolerated input-failure closure (2) instead of refusing as integrity (4)."""
+        self.packet = self.packet.model_copy(update={"packet_digest": "0" * 64})
+        self.assertEqual(self.run_source()["state"], "failed_input")
+        with self.assertRaises(AuditError) as caught:
+            verify_paired(self.out, self.root)
+        self.assertEqual((caught.exception.reason, caught.exception.exit_code), ("packet_integrity_failure", 4))

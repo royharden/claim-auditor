@@ -48,7 +48,7 @@ or dependency installation is added here.
 
 | Source | Consequential invariant |
 |---|---|
-| `tests/test_integrity.py` | Changed source bytes and foreign snapshots fail integrity; a self-hashed negative certificate still needs query replay; absent/duplicate coverage is refused. |
+| `tests/test_integrity.py` | Changed source bytes and foreign snapshots fail integrity; a self-hashed negative certificate still needs query replay; absent/duplicate coverage is refused; missing supplied snapshot/run roots are input (2) while a missing inner run artifact stays integrity (4); the CLI maps an uncaught failure to `unexpected_failure` (3). |
 | `tests/test_policy.py` | Dynamic/incomplete scopes cannot accuse absence; a whole-value contradiction is missing; negation reverses presence/absence; runtime semantics and failed citations abstain. |
 | `tests/test_coordinates_report.py` | CRLF, non-BMP and combining bytes retain exact offsets; repeated inline alignment refuses ambiguity; hostile HTML, links, terminal controls and backticks stay inert. |
 | `tests/test_scoring_packet.py` | Invalid/duplicate rows cannot vanish; all-unknown/all-missing controls expose omissions and harm; failure rows stay in denominators; closed packet fields refuse labels. |
@@ -68,7 +68,7 @@ or dependency installation is added here.
 | `tests/test_dev_packet.py` | DEV packets remain prepared/unadmitted/not-run, create no LOCK/receipts and cannot substitute for admitted locked evaluation. |
 | `tests/test_hostile_git.py` | Full immutable revision only; target config/hooks/filters/helpers and shadow modules stay inert; unsupported stores refuse and unavailable LFS/gitlinks cannot accuse absence. |
 | `tests/test_hostile_paths.py` | Traversal/device/stream paths refuse before opening; symlinks/reparse observations and observable file/ancestor changes fail closed. |
-| `tests/test_resource_boundaries.py` | Source/aggregate/compressed/decompressed caps; memory-enforcement refusal, timeout/overflow failure scopes, isolated import shadows and explicit lone-CR unavailability; an excluded README yields an incomplete `readme_excluded` inventory and an absent README raises `readme_not_in_snapshot` (exit 2). |
+| `tests/test_resource_boundaries.py` | Per-file source/blob caps exclude unread entries (snapshot incomplete); aggregate text and compressed-copy caps abort; memory-enforcement refusal, timeout/overflow failure scopes, isolated import shadows and explicit lone-CR unavailability; an excluded README yields an incomplete `readme_excluded` inventory and an absent README raises `readme_not_in_snapshot` (exit 2). |
 | `tests/test_dataset.py` | Every inference case closes before any label read; duplicate identity/ancestry refuses; raw case gold pins differ from aggregate manifest pins; missing rows/attempts cannot vanish; utility/fake/underpowered results remain separate and inconclusive. |
 | `tests/test_supported_extraction.py` | Handcomputed tiny controls keep supported-kind target rates separate from all-atom recall/omissions and transfer the independent manual denominator to the existing scorer. |
 | `tests/test_run_context.py` | Legacy null context is diagnostic only; new render/verify rejects missing, swapped target/run context or digest; owner declarations never become observed execution. |
@@ -147,7 +147,9 @@ parent handshake/timeout/overflow cases inject inert in-memory process fixtures;
 their success cannot prove that a real OS kills or bounds a hostile worker. Aggregate
 text/compressed-copy tests reduce a guard ceiling within the future test process to
 avoid large fixtures, while the decompressed-blob case uses a modest compressible
-owned Git blob above the real file cap. None of these fixtures has been created now.
+owned Git blob above the real file cap; that blob must become an unread excluded
+`file_byte_limit` entry, not abort the snapshot. None of these fixtures has been
+created now.
 
 The late live-port refusal source is reconciled with typed incomplete responses:
 unknown settlement blocks a successor without a transport call; a retry reservation

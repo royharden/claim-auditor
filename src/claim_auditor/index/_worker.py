@@ -15,6 +15,9 @@ _JOB_HANDLE: object = None
 def _enforce_limits() -> None:
     global _JOB_HANDLE
     if os.name != "nt":
+        if sys.platform == "darwin":
+            # RLIMIT_AS is not kernel-enforced on macOS; report enforced=False (setup failure, exit 2).
+            raise OSError("macos_memory_limit_not_enforced")
         import resource
         resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024, 512 * 1024 * 1024))
         resource.setrlimit(resource.RLIMIT_CPU, (30, 30))

@@ -106,7 +106,7 @@ class ManualAnnotationTests(unittest.TestCase):
         forged = inventory.model_copy(update={"complete": True, "errors": []})
         with self.assertRaises(AuditError) as caught:
             self.record(out, inventory=forged)
-        self.assertEqual(caught.exception.reason, "manual_inventory_changed")
+        self.assertEqual((caught.exception.reason, caught.exception.exit_code), ("manual_inventory_changed", 4))
         self.assertFalse(out.exists())
 
     def test_duplicate_atoms_with_different_ordinals_cannot_inflate_denominator(self):

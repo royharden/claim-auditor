@@ -81,12 +81,13 @@ class CustodyLifecycleTests(unittest.TestCase):
         """what_bug_this_catches: an old seal authorizing changed staged bytes or a self-selected source."""
         with self.assertRaises(AuditError) as caught:
             verify_dev_stage(self.stage, expected_seal_digest="0" * 64)
-        self.assertEqual(caught.exception.reason, "dev_seal_changed")
+        # Changed pinned/sealed artifacts are integrity failures (exit 4), not input refusals.
+        self.assertEqual((caught.exception.reason, caught.exception.exit_code), ("dev_seal_changed", 4))
         frozen = self.stage / "source" / self.alias / "files" / "tiny.py"
         frozen.write_bytes(b"def fake():\n    pass\n")
         with self.assertRaises(AuditError) as caught:
             verify_dev_stage(self.stage, expected_seal_digest=self.pin)
-        self.assertEqual(caught.exception.reason, "dev_stage_artifact_changed")
+        self.assertEqual((caught.exception.reason, caught.exception.exit_code), ("dev_stage_artifact_changed", 4))
         self.assertIn(b"work", (self.base / "source" / "tiny.py").read_bytes())
 
     def test_exported_inference_source_contains_no_control_or_labels(self):
@@ -132,6 +133,6 @@ class CustodyLifecycleTests(unittest.TestCase):
         with self.assertRaises(AuditError) as caught:
             stage_dev_labels(self.stage, ledger, out, expected_seal_digest=self.pin,
                              evidence_files={atom.claim_id: bundle})
-        self.assertEqual(caught.exception.reason, "dev_label_evidence_changed")
+        self.assertEqual((caught.exception.reason, caught.exception.exit_code), ("dev_label_evidence_changed", 4))
         self.assertFalse(out.exists())
         self.assertEqual(ledger.read_bytes(), before)

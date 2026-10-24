@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 import re
-import shutil
 import stat
 import subprocess
 import tempfile
@@ -135,8 +135,67 @@ def _copy_objects(source: Path, destination: Path, algorithm: str) -> None:
         raise SnapshotError("object_store_changed_during_copy")
 
 
+def _trusted_git() -> Path:
+    """Resolve git from absolute PATH entries only, never the cwd; Windows requires git.exe (no .bat/.cmd)."""
+    try:
+        cwd = Path.cwd().resolve()
+    except OSError:
+        cwd = None
+    name = "git.exe" if os.name == "nt" else "git"
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        if not entry or not os.path.isabs(entry):
+            continue
+        try:
+            if Path(entry).resolve() == cwd:
+                continue
+        except OSError:
+            continue
+        candidate = Path(entry) / name
+        if candidate.is_file() and (os.name == "nt" or os.access(candidate, os.X_OK)):
+            return candidate.absolute()
+    raise SnapshotError("trusted_git_binary_unavailable")
+
+
+def _verify_object_id(algorithm: str, kind: str, payload: bytes, oid: str) -> None:
+    """Content addressing: recompute the object ID; never trust store or Git output bytes."""
+    if hashlib.new(algorithm, f"{kind} {len(payload)}\0".encode("ascii") + payload).hexdigest() != oid:
+        raise AuditError("git_object_hash_mismatch", f"{kind} {oid}", 4)
+
+
+def _tree_entries(payload: bytes, width: int) -> list[tuple[str, bytes, str]]:
+    """Parse one verified tree object into (mode, name, hex object ID) records."""
+    records = []
+    position = 0
+    while position < len(payload):
+        space = payload.find(b" ", position)
+        nul = payload.find(b"\x00", space + 1) if space >= 0 else -1
+        if space < 0 or nul < 0 or nul + 1 + width > len(payload):
+            raise SnapshotError("malformed_tree_entry")
+        mode = payload[position:space].decode("ascii")
+        name = payload[space + 1:nul]
+        if not re.fullmatch(r"[0-7]{5,6}", mode) or not name or b"/" in name or name in (b".", b".."):
+            raise SnapshotError("malformed_tree_entry")
+        # Canonicalize like Git's canon_mode (as ls-tree reported): 040000 -> 40000, 100664 -> 100644.
+        value = int(mode, 8)
+        file_type = value & 0o170000
+        if file_type == 0o040000:
+            mode = "40000"
+        elif file_type == 0o100000:
+            mode = "100755" if value & 0o100 else "100644"
+        elif file_type in (0o120000, 0o160000):
+            mode = f"{file_type:o}"
+        else:
+            raise SnapshotError("malformed_tree_entry")
+        records.append((mode, name, payload[nul + 1:nul + 1 + width].hex()))
+        position = nul + 1 + width
+    return records
+
+
 def _batch_bounded(git: list[str], trusted: Path, env: dict[str, str], oid: str, cap: int, kind: str) -> tuple[bytes | None, int]:
-    """Return (payload, size), or (None, size) without reading the object when size exceeds cap."""
+    """Return (payload, size), or (None, size) without reading the object when size exceeds cap.
+
+    A read payload is hash-verified against `oid` (SHA-1/SHA-256 inferred from its width).
+    """
     checked = _run(git + ["cat-file", "--batch-check"], trusted, env, 256, (oid + "\n").encode("ascii"))
     parts = checked.rstrip(b"\n").split(b" ")
     if len(parts) != 3 or parts[0].decode("ascii") != oid or parts[1].decode("ascii") != kind:
@@ -150,6 +209,7 @@ def _batch_bounded(git: list[str], trusted: Path, env: dict[str, str], oid: str,
     header, separator, payload = raw.partition(b"\n")
     if not separator or header != checked.rstrip(b"\n") or len(payload) != size + 1 or not payload.endswith(b"\n"):
         raise SnapshotError("malformed_git_batch_output")
+    _verify_object_id("sha1" if len(oid) == 40 else "sha256", kind, payload[:-1], oid)
     return payload[:-1], size
 
 
@@ -181,10 +241,7 @@ def acquire_git(repo: Path, commit: str, out: Path) -> Snapshot:
         config = read_ordinary(store, "config", 256 * 1024)
         if re.search(rb"promisor|partialclone|worktreeconfig", config, flags=re.IGNORECASE):
             raise SnapshotError("partial_or_promisor_store_not_supported")
-        executable = shutil.which("git")
-        if executable is None:
-            raise SnapshotError("trusted_git_binary_unavailable")
-        executable_path = Path(executable).absolute()
+        executable_path = _trusted_git()
         if repo == executable_path or repo in executable_path.parents:
             raise SnapshotError("git_binary_must_not_come_from_target")
         env = _environment()
@@ -205,29 +262,44 @@ def acquire_git(repo: Path, commit: str, out: Path) -> Snapshot:
             if not re.fullmatch(rb"tree [a-f0-9]{" + str(len(commit)).encode("ascii") + rb"}", first):
                 raise SnapshotError("invalid_commit_tree")
             tree = first[5:].decode("ascii")
-            listing = _run(git + ["ls-tree", "-r", "-z", "--full-tree", commit], trusted, env, 20 * 1024 * 1024)
-            records = listing.split(b"\x00")
-            if records[-1] != b"" or len(records) - 1 > MAX_ENTRIES:
-                raise SnapshotError("invalid_tree_or_entry_limit")
+            # Walk hash-verified tree objects from the verified commit (no ls-tree): every listed
+            # blob provably belongs to this commit's tree. Same 20 MiB listing and entry caps.
+            width = len(commit) // 2
+            records: list[tuple[str, str, str, str]] = []
+            pending = [("", tree)]
+            tree_count = tree_bytes = 0
+            while pending:
+                if time.monotonic() > deadline:
+                    raise SnapshotError("snapshot_time_limit")
+                prefix, tree_oid = pending.pop()
+                tree_count += 1
+                if tree_count > MAX_ENTRIES:
+                    raise SnapshotError("invalid_tree_or_entry_limit")
+                tree_raw = _batch(git, trusted, env, tree_oid, 20 * 1024 * 1024 - tree_bytes, "tree")
+                tree_bytes += len(tree_raw)
+                for mode, name, oid in _tree_entries(tree_raw, width):
+                    raw_path = (prefix.encode("utf-8") + b"/" if prefix else b"") + name
+                    if len(raw_path) > 4096:
+                        raise SnapshotError("tree_path_limit_or_collision")
+                    relative = validated_path(raw_path.decode("utf-8", "strict"))
+                    if mode == "40000":
+                        pending.append((relative, oid))
+                        continue
+                    records.append((relative, mode, "commit" if mode == "160000" else "blob", oid))
+                    if len(records) > MAX_ENTRIES:
+                        raise SnapshotError("invalid_tree_or_entry_limit")
             root = fresh_directory(output_absolute)
             (root / "files").mkdir()
             entries: list[SnapshotEntry] = []
             gaps: list[ScopeGap] = []
             seen: set[str] = set()
             total = 0
-            for record in records[:-1]:
+            for relative, mode, kind, oid in records:
                 if time.monotonic() > deadline:
                     raise SnapshotError("snapshot_time_limit")
-                header, separator, raw_path = record.partition(b"\t")
-                if not separator:
-                    raise SnapshotError("malformed_tree_entry")
-                relative = validated_path(raw_path.decode("utf-8", "strict"))
-                if len(raw_path) > 4096 or collision_key(relative) in seen:
+                if collision_key(relative) in seen:
                     raise SnapshotError("tree_path_limit_or_collision")
                 seen.add(collision_key(relative))
-                mode, kind, oid = header.decode("ascii").split(" ")
-                if not re.fullmatch(rf"[a-f0-9]{{{len(commit)}}}", oid):
-                    raise SnapshotError("invalid_tree_object_id")
                 if mode == "160000" and kind == "commit":
                     gaps.append(ScopeGap(path=relative, reason="submodule_content_unavailable"))
                     continue
