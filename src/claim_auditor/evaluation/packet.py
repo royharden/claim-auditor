@@ -192,7 +192,7 @@ def prepare_evaluation(protocol_path: Path, input_path: Path, out: Path) -> Eval
     _check_lock(lock)
     metadata = _source_metadata(input_path)
     if metadata.manifest_digest != lock.source_seal_digest:
-        raise AuditError("source_seal_mismatch", "source snapshot differs from admitted source seal")
+        raise AuditError("source_seal_mismatch", "source snapshot differs from admitted source seal", 4)
     snapshot = load_snapshot(input_path)
     if snapshot != metadata:
         raise AuditError("source_seal_mismatch", "source changed after metadata admission", 4)

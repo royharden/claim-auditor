@@ -263,11 +263,11 @@ class BudgetLedger:
         from ..snapshot.safeio import SnapshotError, read_ordinary
 
         if (expected_admission is None) != (expected_role is None):
-            raise AuditError("reconciliation_scope_required", "Supply admission and role together.", 4)
+            raise AuditError("reconciliation_scope_required", "Supply admission and role together.")
         if expected_admission is not None:
             expected_admission = LiveBudgetAdmission.model_validate_json(canonical_json(expected_admission))
             if expected_role not in {"extraction", "single_pass"}:
-                raise AuditError("invalid_reconciliation_role", "Unknown admitted role.", 4)
+                raise AuditError("invalid_reconciliation_role", "Unknown admitted role.")
             leaf = Path(os.path.abspath(self.root))
             root = leaf.parent.parent.parent
             expected_leaf = admitted_case_leaf(root, expected_admission,

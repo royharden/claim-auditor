@@ -54,7 +54,7 @@ def _path(base: Path, value: str) -> Path:
 def _manifest(path: Path, digest: str) -> DatasetManifest:
     raw = read_ordinary(path.parent, path.name, 2 * 1024 * 1024)
     if sha256(raw) != digest:
-        raise AuditError("dataset_manifest_changed", "external manifest byte pin differs")
+        raise AuditError("dataset_manifest_changed", "external manifest byte pin differs", 4)
     try:
         manifest = DatasetManifest.model_validate_json(raw)
     except ValidationError as exc:
@@ -90,7 +90,7 @@ def _case_pins(case: DatasetCase, manifest: DatasetManifest, verified: dict[str,
     if ((snapshot.snapshot_id, snapshot.manifest_digest, snapshot.content_digest)
             != (case.snapshot_id, case.snapshot_manifest_digest, case.source_content_digest)
             or packet.snapshot_id != case.snapshot_id or packet.snapshot_manifest_digest != case.snapshot_manifest_digest):
-        raise AuditError("dataset_source_changed", "exact snapshot/content pins differ")
+        raise AuditError("dataset_source_changed", "exact snapshot/content pins differ", 4)
     if (verified["manifest_digest"] != case.run_manifest_digest or set(verified["predictions"]) != ALL_ARMS
             or set(verified["attempts"]) != ALL_ARMS or set(run["arms"]) != ALL_ARMS):
         raise AuditError("dataset_run_scope", "every required closed arm must be present without extra treatments")
@@ -162,7 +162,7 @@ def preflight_dataset(manifest_path: Path, *, manifest_digest: str) -> dict[str,
             # verifier's protocol validation; only bind its source/gold receipts.
             protocol_raw = read_ordinary(run_root, "protocol-copy.json", 128 * 1024)
             if sha256(protocol_raw) != case.protocol_digest:
-                raise AuditError("dataset_protocol_changed", "closed copied protocol differs from external case pin")
+                raise AuditError("dataset_protocol_changed", "closed copied protocol differs from external case pin", 4)
             lock = EvaluationLock.model_validate_json(protocol_raw)
             if (lock.source_seal_digest != case.snapshot_manifest_digest or lock.gold_seal_digest != case.gold_digest
                     or lock.custody_receipt != case.custody_receipt or lock.source_rights_receipt != case.source_rights_receipt
@@ -184,7 +184,7 @@ def _gold(item: dict[str, Any], base: Path) -> tuple[list[GoldAtom], bytes]:
     path = _path(base, case.gold_path)
     raw = read_ordinary(path.parent, path.name, MAX_GOLD_BYTES)
     if sha256(raw) != case.gold_digest:
-        raise AuditError("dataset_gold_changed", "later-opened exact gold bytes differ from external curator pin")
+        raise AuditError("dataset_gold_changed", "later-opened exact gold bytes differ from external curator pin", 4)
     lines = raw.splitlines()
     if not lines or len(lines) > Limits().max_atoms or any(not line.strip() for line in lines):
         raise AuditError("dataset_gold_invalid", "nonempty bounded JSONL required; no dropped blank/invalid rows")
@@ -409,7 +409,7 @@ def evaluate_dataset(manifest_path: Path, out: Path, *, manifest_digest: str) ->
         phase = "summary_artifacts"
         manifest_raw = read_ordinary(preflight["manifest_path"].parent, preflight["manifest_path"].name, 2 * 1024 * 1024)
         if sha256(manifest_raw) != manifest_digest:
-            raise AuditError("dataset_manifest_changed", "operator manifest changed during scoring; preserve failed study")
+            raise AuditError("dataset_manifest_changed", "operator manifest changed during scoring; preserve failed study", 4)
         hashes = {"SUMMARY.json": _write(out / "SUMMARY.json", summary),
                   "items.json": _write(out / "items.json", summary["items"]),
                   "manifest-copy.json": _raw_write(out / "manifest-copy.json", manifest_raw)}

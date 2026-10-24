@@ -50,9 +50,9 @@ def _validate(row: AnnotationRuling) -> AnnotationRuling:
     except (ValidationError, ValueError) as exc:
         raise AuditError("invalid_ruling", "closed-schema ruling validation failed") from exc
     if row.ruling_id != stable_id("ruling", _fields(row)):
-        raise AuditError("ruling_digest_mismatch", "ruling_id must bind every other field")
+        raise AuditError("ruling_digest_mismatch", "ruling_id must bind every other field", 4)
     if sha256(canonical_json(row.atom.claim)) != row.claim_digest:
-        raise AuditError("ruling_claim_changed", "claim bytes differ from bound digest")
+        raise AuditError("ruling_claim_changed", "claim bytes differ from bound digest", 4)
     recorded = _timestamp(row.recorded_at)
     atom = row.atom
     if not atom.gold_id.strip() or not atom.family_id.strip() or not atom.claim.claim_id.strip():
@@ -115,14 +115,14 @@ def _extend(history: list[AnnotationRuling], incoming: list[AnnotationRuling]) -
                 raise AuditError("ruling_identity_conflict", "one ID has different bytes")
             continue  # Exact re-import is idempotent, not a second judgment.
         if manifests and row.source_manifest_digest not in manifests:
-            raise AuditError("ruling_source_changed", "use a fresh ledger for a new source manifest; preserve this history")
+            raise AuditError("ruling_source_changed", "use a fresh ledger for a new source manifest; preserve this history", 4)
         subject = (row.atom.family_id, row.atom.gold_id)
         claim_key = (row.atom.family_id, row.atom.claim.claim_id)
         if claim_key in subjects and subjects[claim_key] != row.atom.gold_id:
             raise AuditError("ruling_subject_conflict", "all annotators must retain one stable subject identity for the same claim")
         binding = (row.source_manifest_digest, row.claim_digest, row.evidence_digest)
         if subject in bindings and bindings[subject] != binding:
-            raise AuditError("ruling_binding_changed", "source/claim/evidence changed; require fresh review in a fresh ledger")
+            raise AuditError("ruling_binding_changed", "source/claim/evidence changed; require fresh review in a fresh ledger", 4)
         previous = latest.get(_key(row))
         expected = previous.ruling_id if previous is not None else None
         if row.supersedes_ruling_id != expected:
@@ -219,7 +219,7 @@ def _append_many(path: Path, incoming: list[AnnotationRuling], *, human_confirma
                     or getattr(opened, "st_file_attributes", 0) & 0x400
                     or (before is not None and (before.st_dev, before.st_ino, before.st_mtime_ns)
                         != (opened.st_dev, opened.st_ino, opened.st_mtime_ns))):
-                raise AuditError("ruling_ledger_changed", "ledger changed before append")
+                raise AuditError("ruling_ledger_changed", "ledger changed before append", 4)
             view = memoryview(data)
             while view:
                 written = os.write(descriptor, view)
@@ -269,7 +269,7 @@ def current_rulings(
         if (row.source_manifest_digest != source_manifest_digest
                 or claim_digests.get(claim_id) != row.claim_digest
                 or evidence_digests.get(claim_id) != row.evidence_digest):
-            raise AuditError("ruling_binding_changed", "current reopened source/claim/evidence does not match judgment")
+            raise AuditError("ruling_binding_changed", "current reopened source/claim/evidence does not match judgment", 4)
     return list(latest.values())
 
 
@@ -287,10 +287,10 @@ def prepare_annotation_package(run_root: Path, out: Path, *, family_id: str) -> 
     manifest = verify_report(Path(run_root))
     raw = read_ordinary(Path(run_root), "report.json", cap=64 * 1024 * 1024)
     if sha256(raw) != manifest.report_hashes["report.json"]:
-        raise AuditError("annotation_report_changed", "report bytes changed after integrity verification")
+        raise AuditError("annotation_report_changed", "report bytes changed after integrity verification", 4)
     report = AuditReport.model_validate_json(raw)
     if report.snapshot.manifest_digest != manifest.snapshot_manifest_digest:
-        raise AuditError("annotation_source_changed", "report snapshot differs from verified run")
+        raise AuditError("annotation_source_changed", "report snapshot differs from verified run", 4)
     out = Path(out)
     run_absolute = Path(os.path.abspath(run_root))
     out_absolute = Path(os.path.abspath(out))

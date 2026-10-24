@@ -25,8 +25,8 @@ MAX_CONTROL_BYTES = 4 * 1024 * 1024
 _ALIAS = re.compile(r"f-[a-f0-9]{16}")
 
 
-def _fail(reason: str, detail: str) -> AuditError:
-    return AuditError(reason, detail)
+def _fail(reason: str, detail: str, exit_code: int = 2) -> AuditError:
+    return AuditError(reason, detail, exit_code)
 
 
 def _dev_only(designation: str, admission_requested: bool) -> None:
@@ -110,7 +110,7 @@ def _provenance(value: dict[str, object], snapshot: Snapshot) -> None:
     inventory_digest = sha256(json.dumps(entries, sort_keys=True, separators=(",", ":")).encode("utf-8"))
     if (value.get("inventory_digest_method") != "sha256(sorted compact JSON source_inventory, ensure_ascii default)"
             or value.get("source_inventory") != entries or value.get("source_inventory_digest") != inventory_digest):
-        raise _fail("dev_source_inventory_changed", "frozen source differs from supplied provenance inventory")
+        raise _fail("dev_source_inventory_changed", "frozen source differs from supplied provenance inventory", 4)
     if not snapshot.complete or snapshot.source_kind != "fixture_inventory":
         raise _fail("incomplete_dev_stage", "this DEV loose-source stage requires a complete fixture inventory")
     for item in snapshot.entries:
@@ -224,14 +224,14 @@ def verify_dev_stage(root: Path, *, expected_seal_digest: str) -> Snapshot:
         raise _fail("invalid_dev_seal", "independently retained full seal digest is mandatory")
     seal_raw = _read(root / "SEAL.json")
     if sha256(seal_raw) != expected_seal_digest:
-        raise _fail("dev_seal_changed", "seal bytes differ from operator's pinned identity")
+        raise _fail("dev_seal_changed", "seal bytes differ from operator's pinned identity", 4)
     seal = _object(seal_raw)
     _keys(seal, {"format", "stage_sha256", "source_manifest_digest", "designation", "custody_verified", "heldout", "admitted"})
     if seal["format"] != "dev-stage-seal/1" or seal["designation"] != "DEV_ONLY" or any(seal[key] is not False for key in ("custody_verified", "heldout", "admitted")):
         raise _fail("custody_admission_unsupported", "seal cannot certify heldout/custody/admission")
     stage_raw = _read(root / "STAGE.json")
     if sha256(stage_raw) != seal["stage_sha256"]:
-        raise _fail("dev_manifest_changed", "stage bytes differ from sealed identity")
+        raise _fail("dev_manifest_changed", "stage bytes differ from sealed identity", 4)
     stage = _object(stage_raw)
     _keys(stage, {"format", "designation", "alias", "source_manifest_digest", "artifacts", "custody_verified", "heldout", "admitted"})
     if stage["format"] != "dev-stage/1" or stage["designation"] != "DEV_ONLY" or any(stage[key] is not False for key in ("custody_verified", "heldout", "admitted")):
@@ -240,14 +240,14 @@ def verify_dev_stage(root: Path, *, expected_seal_digest: str) -> Snapshot:
         raise _fail("unsafe_family_alias", "alias must be an opaque string")
     alias = _alias(stage["alias"])
     if _inventory(root) != stage["artifacts"]:
-        raise _fail("dev_stage_artifact_changed", "missing, extra or modified stage artifacts")
+        raise _fail("dev_stage_artifact_changed", "missing, extra or modified stage artifacts", 4)
     expected_paths = {"control/provenance.json", "control/access-receipt.json"}
     for item in stage["artifacts"]:
         if item["path"] not in expected_paths and not item["path"].startswith(f"source/{alias}/"):
             raise _fail("annotation_material_in_source", "stage contains an undeclared control/label scope")
     snapshot = load_snapshot(root / "source" / alias)
     if snapshot.manifest_digest != stage["source_manifest_digest"] or snapshot.manifest_digest != seal["source_manifest_digest"]:
-        raise _fail("dev_source_manifest_changed", "source manifest does not match stage/seal")
+        raise _fail("dev_source_manifest_changed", "source manifest does not match stage/seal", 4)
     _provenance(_object(_read(root / "control" / "provenance.json")), snapshot)
     _receipt(_object(_read(root / "control" / "access-receipt.json")))
     return snapshot
@@ -295,7 +295,7 @@ def stage_dev_labels(
     bundle_bytes = 0
     for row in rows:
         if row.source_manifest_digest != snapshot.manifest_digest or row.atom.family_id != provenance["family_id"]:
-            raise _fail("dev_label_source_changed", "judgment belongs to different frozen source/family")
+            raise _fail("dev_label_source_changed", "judgment belongs to different frozen source/family", 4)
         validate_span(snapshot, snapshot_root, row.atom.claim.span)
         claim_id = row.atom.claim.claim_id
         if claim_id not in bundles:
@@ -305,7 +305,7 @@ def stage_dev_labels(
                 raise _fail("dev_stage_limit", "combined evidence bundles exceed label-stage byte ceiling")
         raw = bundles[claim_id]
         if sha256(raw) != row.evidence_digest:
-            raise _fail("dev_label_evidence_changed", "evidence bytes differ from original judgment binding")
+            raise _fail("dev_label_evidence_changed", "evidence bytes differ from original judgment binding", 4)
         if claim_id in validated_claims:
             if row.atom.verdict != "unknown" and claim_id not in evidence_claims:
                 raise _fail("dev_label_evidence_missing", "nonunknown judgment requires reopened evidence")

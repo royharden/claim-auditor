@@ -133,7 +133,7 @@ def _inventory(
     for parent in parent_spans:
         expected = _span(snapshot, document, readme_path, parent.start_byte, parent.end_byte)
         if parent != expected:
-            raise AuditError("manual_parent_changed", "retained parent bytes/coordinates differ from README")
+            raise AuditError("manual_parent_changed", "retained parent bytes/coordinates differ from README", 4)
         parent_id = stable_id("sentence", snapshot.snapshot_id, readme_path, parent.start_byte, parent.end_byte)
         if parent_id in parents:
             raise AuditError("duplicate_manual_parent", "retain each parent context once")
@@ -152,7 +152,7 @@ def _inventory(
                           kind=claim.kind, normalized=claim.normalized, predicates=claim.predicates,
                           uncertainty=claim.uncertainty)
         if claim != expected:
-            raise AuditError("manual_atom_changed", "manual claim bytes, predicate identities or method changed")
+            raise AuditError("manual_atom_changed", "manual claim bytes, predicate identities or method changed", 4)
         fields = [item.model_dump(mode="json", exclude={"predicate_id"}) for item in claim.predicates]
         signature = canonical_json([claim.span.start_byte, claim.span.end_byte, claim.kind,
                                     sorted(canonical_json(item).decode("utf-8") for item in fields)])
@@ -267,15 +267,15 @@ def _validate_annotation(snapshot_root: Path, record: ManualAnnotation) -> Manua
         raise AuditError("manual_family_required", "family identity cannot be blank")
     fields = record.model_dump(mode="json", exclude={"annotation_id"})
     if record.annotation_id != stable_id("manual-annotation", fields):
-        raise AuditError("manual_annotation_digest", "annotation content identity changed")
+        raise AuditError("manual_annotation_digest", "annotation content identity changed", 4)
     snapshot, document = _context(snapshot_root, record.inventory.readme_path)
     if record.source_manifest_digest != snapshot.manifest_digest:
-        raise AuditError("manual_source_changed", "annotation belongs to a different source manifest")
+        raise AuditError("manual_source_changed", "annotation belongs to a different source manifest", 4)
     reviews = {block.block_id: (block.status, block.reason or "") for block in record.inventory.blocks}
     inventory = _inventory(snapshot, document, record.inventory.readme_path,
                            record.inventory.claims, record.parent_spans, reviews)
     if record.inventory != inventory:
-        raise AuditError("manual_inventory_changed", "raw coverage, claims, statuses or complete flag changed")
+        raise AuditError("manual_inventory_changed", "raw coverage, claims, statuses or complete flag changed", 4)
     return record
 
 
@@ -419,7 +419,7 @@ def _export_labels(
     for row in history:
         _subject(record, row.atom)
         if row.source_manifest_digest != snapshot.manifest_digest:
-            raise AuditError("manual_source_changed", "ruling history belongs to different frozen source")
+            raise AuditError("manual_source_changed", "ruling history belongs to different frozen source", 4)
     judged_claims = {row.atom.claim.claim_id for row in history}
     if set(evidence_files) != judged_claims:
         raise AuditError("manual_evidence_scope", "reopen exactly one evidence bundle for every claim in retained history")
@@ -437,7 +437,7 @@ def _export_labels(
                             claim_digests={key: sha256(canonical_json(claims[key])) for key in judged_claims},
                             evidence_digests={key: sha256(raw) for key, raw in bundles.items()})
     if canonical_json(load_rulings(ledger_path)) != canonical_json(history):
-        raise AuditError("manual_ruling_history_changed", "history changed during export preparation; retry with a fresh explicit action")
+        raise AuditError("manual_ruling_history_changed", "history changed during export preparation; retry with a fresh explicit action", 4)
     if len(set(ruling_ids.values())) != len(ruling_ids):
         raise AuditError("duplicate_manual_selection", "one ruling cannot silently fill multiple atoms")
     current = {row.ruling_id: row for row in latest}
@@ -530,7 +530,7 @@ def audit_manual_omissions(
         raise AuditError("invalid_candidate_inventory", "bounded closed Inventory input required") from exc
     if ((candidate.snapshot_id, candidate.readme_path, candidate.readme_sha256)
             != (record.inventory.snapshot_id, record.inventory.readme_path, record.inventory.readme_sha256)):
-        raise AuditError("manual_candidate_source_changed", "candidate/manual inventories must share exact source/README identity")
+        raise AuditError("manual_candidate_source_changed", "candidate/manual inventories must share exact source/README identity", 4)
     if len(candidate.claims) > Limits().max_atoms:
         raise AuditError("candidate_inventory_limit", "candidate atom count exceeds bounded source comparison policy")
     if len({claim.claim_id for claim in candidate.claims}) != len(candidate.claims):

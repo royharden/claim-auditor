@@ -106,21 +106,21 @@ def build_packet_facts(packet: EvaluationPacket) -> PacketFacts:
     rows = parsed["files"]
     expected = {item["path"]: item["text"].encode("utf-8") for item in selected}
     if not isinstance(rows, list) or len(rows) != len(expected):
-        raise AuditError("parser_invalid_output", "packet parser file accounting differs")
+        raise AuditError("parser_invalid_output", "packet parser file accounting differs", 3)
     seen: set[str] = set()
     for row in rows:
         if type(row) is not dict or set(row) != {"path", "error", "facts", "flags", "exports"}:
-            raise AuditError("parser_invalid_output", "packet parser returned extra fields")
+            raise AuditError("parser_invalid_output", "packet parser returned extra fields", 3)
         path = row["path"]
         if type(path) is not str or path not in expected or path in seen:
-            raise AuditError("parser_invalid_output", "unexpected/duplicate packet file")
+            raise AuditError("parser_invalid_output", "unexpected/duplicate packet file", 3)
         seen.add(path)
         if row["error"] is not None:
             result.gaps.append(ScopeGap(path=path, reason="packet_source_parse_failure"))
             continue
         if (type(row["facts"]) is not list or type(row["flags"]) is not list
                 or not all(type(flag) is str for flag in row["flags"])):
-            raise AuditError("parser_invalid_output", "invalid packet fact lists")
+            raise AuditError("parser_invalid_output", "invalid packet fact lists", 3)
         raw = expected[path]
         original = RawDocument.decode(originals[path])
         normalized = RawDocument.decode(raw)
@@ -131,16 +131,16 @@ def build_packet_facts(packet: EvaluationPacket) -> PacketFacts:
                     or not 0 <= value["start_byte"] < value["end_byte"] <= len(raw)
                     or not all(type(value[k]) is str for k in ("kind", "subject", "path"))
                     or value["module"] != _module_from_path(path)):
-                raise AuditError("parser_invalid_output", "packet fact shape/coordinates differ")
+                raise AuditError("parser_invalid_output", "packet fact shape/coordinates differ", 3)
             value = dict(value)
             if path.endswith(".py"):
                 first, last = value["start_line"] - 1, value["end_line"] - 1
                 if not 0 <= first <= last < len(normalized.line_bytes) - 1:
-                    raise AuditError("parser_invalid_output", "packet AST line map escapes admitted bytes")
+                    raise AuditError("parser_invalid_output", "packet AST line map escapes admitted bytes", 3)
                 first_column = value["start_byte"] - normalized.line_bytes[first]
                 last_column = value["end_byte"] - normalized.line_bytes[last]
                 if min(first_column, last_column) < 0:
-                    raise AuditError("parser_invalid_output", "negative AST byte column")
+                    raise AuditError("parser_invalid_output", "negative AST byte column", 3)
                 value["start_byte"] = original.line_bytes[first] + first_column
                 value["end_byte"] = original.line_bytes[last] + last_column
             else:

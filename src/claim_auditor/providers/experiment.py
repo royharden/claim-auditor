@@ -121,7 +121,7 @@ def run_configured_live(
     durable = Path(os.path.abspath(ledger_root))
     for protected in (Path(os.path.abspath(snapshot_root)), Path(os.path.abspath(out))):
         if durable == protected or durable in protected.parents or protected in durable.parents:
-            raise AuditError("invalid_ledger_scope", "Durable owner liability must be disjoint from source and fresh output before any root write.", 4)
+            raise AuditError("invalid_ledger_scope", "Durable owner liability must be disjoint from source and fresh output before any root write.")
     config = validate_live_config(config)
     bind_budget_admission(ledger_root, budget_admission, protocol_digest=protocol_digest,
                            caps=config.caps, authorization_ids={role: grant.authorization_id for role, grant in config.authorizations.items()})

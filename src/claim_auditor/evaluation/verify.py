@@ -428,8 +428,25 @@ def _verify(root: Path, source: Path, expected_digest: str | None) -> dict:
         for arm in (() if manifest["state"] == "failed_input" else ("live_extraction", "live_single_pass")):
             if not control_paths <= set(manifest["arms"][arm]["authorization"]["allowed_paths"]):
                 raise AuditError("paired_identity_mismatch", "unapproved control scope before source-byte access", 4)
-    snapshot = load_snapshot(source)
-    validate_packet(packet, snapshot, source)
+    snapshot = load_snapshot(source)  # An unloadable source is never certifiable; its error propagates.
+    packet_failure = None
+    if manifest["state"] == "failed_input":
+        # A recorded packet-input failure may still reproduce. Certify only a failure-only
+        # closure whose rows carry exactly that reproduced reason (same mapping as the runner),
+        # so the case stays visible in denominators and nothing packet-derived is certified.
+        try:
+            validate_packet(packet, snapshot, source)
+        except (AuditError, ValidationError, OSError, ValueError) as exc:
+            if isinstance(exc, AuditError) and exc.exit_code == 4:
+                raise  # A changed sealed packet/source is integrity, never a tolerated input failure.
+            packet_failure = exc.reason if isinstance(exc, AuditError) else "invalid_packet_input"
+        if packet_failure is not None and (
+                any(type(info) is not dict or info.get("status") != "failed_input" for info in arms.values())
+                or any(path in {"inventory.json", "packet-facts.json"} or "-budget/" in path
+                       or path.startswith("full-index-run/") for path in artifacts) or (root / "full-index-run").exists()):
+            raise AuditError("paired_attempt_integrity", "reproduced input failure must be a failure-only closure", 4)
+    else:
+        validate_packet(packet, snapshot, source)
     if (manifest["input_digest"] != sha256(canonical_json(packet)) or manifest["packet_digest"] != packet.packet_digest
             or manifest["snapshot_id"] != packet.snapshot_id):
         raise AuditError("paired_identity_mismatch", "packet/input/snapshot identity differs", 4)
@@ -448,6 +465,7 @@ def _verify(root: Path, source: Path, expected_digest: str | None) -> dict:
     predictions: dict[str, list[PredictionRow]] = {}
     attempts: dict[str, list[Attempt]] = {}
     derived_halt = None
+    unbound_arms: list[str] = []
     for arm in [*PAIRED_ARMS, *(["product_full_index"] if "product_full_index" in arms else [])]:
         info = arms[arm]
         provider = arm in {"live_extraction", "live_single_pass"}
@@ -471,6 +489,8 @@ def _verify(root: Path, source: Path, expected_digest: str | None) -> dict:
             raise AuditError("paired_identity_mismatch", "paired/full-index scope was relabeled", 4)
         rows = _models(artifacts[f"{arm}/predictions.jsonl"], PredictionRow)
         evidence = [Evidence.model_validate(item) for item in _json(artifacts[f"{arm}/evidence.json"])]
+        if packet_failure is not None and rows != [failure_row(packet.snapshot_id, arm, _status(packet_failure), packet_failure)]:
+            raise AuditError("paired_row_integrity", "failed input rows must carry the reproduced input failure", 4)
         _check_rows(rows, packet, snapshot, source, arm)
         if info["rows"] != len(rows) or info["failure_rows"] != sum(r.status != "prediction" for r in rows):
             raise AuditError("paired_row_integrity", "row denominators differ", 4)
@@ -508,7 +528,14 @@ def _verify(root: Path, source: Path, expected_digest: str | None) -> dict:
             response = response_type.model_validate(info["response"]) if info["response"] is not None else None
             if type(info["producer_invoked"]) is not bool or type(info["response_bound"]) is not bool:
                 raise AuditError("paired_invalid_artifact", "dispatch/binding observations must be explicit booleans", 4)
-            if info["producer_invoked"] and not info["response_bound"]:
+            # The exact shape the runner writes when its producer ran but the return never
+            # bound: incomplete evidence (exit 3 after every other check), not tampering.
+            unbound = (manifest["state"] != "failed_input" and not (live_protocol and derived_halt)
+                       and info["producer_invoked"] and not info["response_bound"]
+                       and response is None and request is not None and info["status"] == "incomplete"
+                       and info["execution_kind"] == "unknown" and len(rows) == 1 and rows[0].status != "prediction"
+                       and evidence == [] and info["attempts"] == [] and info["usage"] == [] and info["simulated_usage"] == [])
+            if info["producer_invoked"] and not info["response_bound"] and not unbound:
                 raise AuditError("paired_attempt_integrity", "unbound producer return cannot certify closed attempt evidence", 4)
             if response is not None and (not info["producer_invoked"] or not info["response_bound"]):
                 raise AuditError("paired_attempt_integrity", "response invents dispatch/binding observations", 4)
@@ -522,6 +549,10 @@ def _verify(root: Path, source: Path, expected_digest: str | None) -> dict:
                 if (request.arm != role or canonical_json(request.packet) != canonical_json(packet)
                         or request.input_digest != manifest["input_digest"] or request.caps != expected_caps):
                     raise AuditError("paired_identity_mismatch", "provider saw a different packet/caps", 4)
+            if unbound:
+                unbound_arms.append(arm)
+                if live_protocol:
+                    derived_halt = "experiment_unsettled_liability"  # Mirrors the runner's unknown-liability halt.
             if response is not None:
                 if request is None or response.request_digest != sha256(canonical_json(request)):
                     raise AuditError("paired_identity_mismatch", "provider request/response binding differs", 4)
@@ -571,11 +602,11 @@ def _verify(root: Path, source: Path, expected_digest: str | None) -> dict:
                 raise AuditError("paired_attempt_integrity", "no response may not invent observations/findings", 4)
             elif not rows:
                 raise AuditError("paired_row_integrity", "failed or held provider arm lost its denominator", 4)
-            if response is None and info["execution_kind"] != "not_attempted":
+            if response is None and not unbound and info["execution_kind"] != "not_attempted":
                 raise AuditError("paired_attempt_integrity", "no-response arm invented execution provenance", 4)
             if response is None and info["status"] == "abstention_screened" and not _packet_screened(packet):
                 raise AuditError("paired_proof_mismatch", "screened outcome does not replay against original packet strings", 4)
-            if response is None and any(path.startswith(f"{arm}-budget/") for path in artifacts):
+            if response is None and not unbound and any(path.startswith(f"{arm}-budget/") for path in artifacts):
                 raise AuditError("paired_attempt_integrity", "ledger activity has no closed response", 4)
         elif arm == "packet_candidate" and (successes or inventory is not None):
             if inventory is None or facts is None:
@@ -600,6 +631,8 @@ def _verify(root: Path, source: Path, expected_digest: str | None) -> dict:
         raise AuditError("paired_attempt_integrity", "execution provenance summary hides attempts", 4)
     if manifest["dispatch_halt"] != derived_halt:
         raise AuditError("paired_attempt_integrity", "experiment-wide liability halt was hidden", 4)
+    if unbound_arms:
+        raise AuditError("paired_dispatch_unbound", f"producer ran but its return never bound ({', '.join(unbound_arms)}); attempt evidence is incomplete, reconcile the producer ledger before scoring", 3)
     return dict(manifest=manifest, manifest_digest=digest, packet=packet, predictions=predictions, attempts=attempts)
 
 
@@ -621,7 +654,7 @@ def score_paired(run_root: Path, snapshot_root: Path, gold_path: Path, out: Path
             raise AuditError("paired_artifact_integrity", "protocol changed after verification", 4)
         lock = EvaluationLock.model_validate_json(protocol_raw)
         if sha256(gold_raw) != lock.gold_seal_digest:
-            raise AuditError("paired_gold_seal_mismatch", "single-packet locked scoring requires the exact admitted gold JSONL bytes")
+            raise AuditError("paired_gold_seal_mismatch", "single-packet locked scoring requires the exact admitted gold JSONL bytes", 4)
     gold_lines = gold_raw.splitlines()
     if len(gold_lines) > 5000 or any(not line.strip() for line in gold_lines):
         raise AuditError("paired_gold_scope_mismatch", "gold must be bounded nonblank JSONL")

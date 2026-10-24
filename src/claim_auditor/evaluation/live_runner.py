@@ -37,7 +37,7 @@ def _check_case_entry(ledger_roots: Mapping[str, Path]) -> None:
         if state_path.exists() or state_path.is_symlink():
             state = BudgetState.model_validate_json(read_ordinary(root, state_path.name, cap=64 * 1024))
             if state.unknown_settlement or state.pending is not None:
-                raise AuditError("unsettled_liability", "Prior experiment liability must be reconciled in the same producer ledger")
+                raise AuditError("unsettled_liability", "Prior experiment liability must be reconciled in the same producer ledger", 3)
     if any((root / name).exists() or (root / name).is_symlink()
            for root in ledger_roots.values()
            for name in ("budget.json", "requests.json", "attempts.jsonl")):
@@ -131,12 +131,12 @@ def run_live_experiment(
             if (getattr(transport, "ledger_root", None) is None
                     or Path(transport.ledger_root).absolute() != ledger_root.absolute()
                     or canonical_json(getattr(transport, "budget_admission", None)) != canonical_json(budget_admission)):
-                raise AuditError("budget_admission_mismatch", "Owner transports must bind the same durable root and budget admission")
+                raise AuditError("transport_admission_binding", "Owner transports must bind the same durable root and budget admission")
         if any(ledger_root.resolve() == path.resolve() or path.resolve() in ledger_root.resolve().parents for path in (out, snapshot_root)):
             raise AuditError("invalid_ledger_scope", "Durable liability store must be outside fresh outputs and preserved source")
     raw_lock = read_ordinary(protocol_path.parent, protocol_path.name, cap=128 * 1024)
     if sha256(raw_lock) != protocol_digest:
-        raise AuditError("evaluation_lock_digest_mismatch", "External owner pin must match exact LOCK bytes")
+        raise AuditError("evaluation_lock_digest_mismatch", "External owner pin must match exact LOCK bytes", 4)
     try:
         lock = EvaluationLock.model_validate_json(raw_lock)
     except ValidationError as exc:
@@ -152,7 +152,7 @@ def run_live_experiment(
     # source file, so do not invoke it until all metadata/source paths are allowed.
     metadata = _source_metadata(snapshot_root)
     if metadata.manifest_digest != lock.source_seal_digest:
-        raise AuditError("source_seal_mismatch", "Control manifest differs from admitted source")
+        raise AuditError("source_seal_mismatch", "Control manifest differs from admitted source", 4)
     paths = {entry.path for entry in metadata.entries} | {gap.path for gap in metadata.exclusions if gap.path is not None}
     if "README.md" not in paths or any(not paths <= set(grant.allowed_paths) for grant in grants.values()):
         raise AuditError("live_data_scope_denied", "All source and scope-metadata paths must be authorized before reads")
@@ -176,7 +176,7 @@ def run_live_experiment(
     try:
         if ledger_root is not None:
             if budget_admission is None:
-                raise AuditError("budget_admission_mismatch", "An explicit durable root requires its matching owner admission; fixtures may use output-local ledgers")
+                raise AuditError("budget_admission_required", "An explicit durable root requires its matching owner admission; fixtures may use output-local ledgers")
             ledger_roots = {
                 role: admitted_case_leaf(ledger_root, budget_admission, protocol_digest=protocol_digest,
                                          packet_digest=packet.packet_digest, role=role)

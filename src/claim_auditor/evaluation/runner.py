@@ -161,7 +161,7 @@ def _run_paired(
     try:
         for name, raw in (controls or {}).items():
             if name not in {"protocol-copy.json", "prompts/extraction.txt", "prompts/single_pass.txt"}:
-                raise AuditError("paired_invalid_artifact", "undeclared experiment control artifact")
+                raise AuditError("undeclared_experiment_control", "undeclared experiment control artifact")
             target = destination / name
             target.parent.mkdir(parents=True, exist_ok=True)
             with target.open("xb") as stream:

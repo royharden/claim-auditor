@@ -102,7 +102,7 @@ def _validate_request(request: ProviderRequest) -> None:
 
 def _validate_fixture(request: ProviderRequest, fixture: ProviderFixture) -> None:
     if fixture.request_digest != request_digest(request):
-        raise AuditError("replay_identity_mismatch", "Fixture arm/packet/input/prompt/model/policy/caps differ.")
+        raise AuditError("replay_identity_mismatch", "Fixture arm/packet/input/prompt/model/policy/caps differ.", 4)
     seen: set[str] = set()
     ranges: set[tuple[int, int, int]] = set()
     for proposal in fixture.proposals:
