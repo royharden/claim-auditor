@@ -8,7 +8,7 @@ from typing import Mapping
 
 from pydantic import ValidationError
 
-from claim_auditor.accounting import BudgetLedger, bind_budget_admission
+from claim_auditor.accounting import BudgetLedger, admitted_case_leaf, bind_budget_admission
 from claim_auditor.contracts import (
     AuditError, EvaluationLock, EvaluationPacket, LiveAuthorization, LiveBudgetAdmission, LiveProviderResponse,
     BudgetState, ProviderCaps, ProviderRequest, canonical_json, sha256,
@@ -172,18 +172,21 @@ def run_live_experiment(
         _preparation_failure(out, lock, metadata.snapshot_id, protocol_digest, exc)
         raise
     packet = EvaluationPacket.model_validate_json(read_ordinary(prepared, "packet.json", cap=2 * 1024 * 1024))
-    ledger_roots = {role: ledger_root / protocol_digest / packet.packet_digest / role for role in _ROLES} if ledger_root else None
-    if ledger_roots:
-        try:
+    ledger_roots = None
+    try:
+        if ledger_root is not None:
+            if budget_admission is None:
+                raise AuditError("budget_admission_mismatch", "An explicit durable root requires its matching owner admission; fixtures may use output-local ledgers")
+            ledger_roots = {
+                role: admitted_case_leaf(ledger_root, budget_admission, protocol_digest=protocol_digest,
+                                         packet_digest=packet.packet_digest, role=role)
+                for role in _ROLES
+            }
             _check_case_entry(ledger_roots)
-        except AuditError as exc:
-            _preparation_failure(out, lock, metadata.snapshot_id, protocol_digest, exc)
-            raise
+    except AuditError as exc:
+        _preparation_failure(out, lock, metadata.snapshot_id, protocol_digest, exc)
+        raise
     if "live" in kinds:
-        if budget_admission.packet_digest != packet.packet_digest:
-            error = AuditError("budget_admission_mismatch", "Owner budget admission differs from the actual packet", 4)
-            _preparation_failure(out, lock, metadata.snapshot_id, protocol_digest, error)
-            raise error
         # D4 owns identity binding and durable admission; no alternate ledger,
         # price calculation, balance reset or receipt synthesis occurs here.
         try:

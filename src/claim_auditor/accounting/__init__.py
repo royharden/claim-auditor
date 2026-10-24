@@ -30,6 +30,24 @@ def budget_admission_id(record: LiveBudgetAdmission) -> str:
     return stable_id("budget-admission", record.model_dump(mode="json", exclude={"admission_id"}))
 
 
+def admitted_case_leaf(root: Path, admission: LiveBudgetAdmission, *, protocol_digest: str,
+                       packet_digest: str, role: str) -> Path:
+    """Pure lexical admitted root/protocol/packet/role derivation, with no I/O.
+
+    Does not bind/adopt admission, inspect/create a ledger, resolve filesystem
+    links or authorize dispatch. Callers may inspect existing case history before
+    bind_budget_admission; ordinary-file and budget checks remain with their owners.
+    """
+    admission = LiveBudgetAdmission.model_validate_json(canonical_json(admission))
+    root = Path(os.path.abspath(root))
+    if (role not in {"extraction", "single_pass"}
+            or admission.admission_id != budget_admission_id(admission)
+            or admission.ledger_root_identity != ledger_root_identity(root)
+            or admission.protocol_digest != protocol_digest or admission.packet_digest != packet_digest):
+        raise AuditError("budget_admission_mismatch", "Case leaf requires the exact admitted root/protocol/packet/role.", 4)
+    return root / admission.protocol_digest / admission.packet_digest / role
+
+
 def bind_budget_admission(root: Path, record: LiveBudgetAdmission, *, protocol_digest: str,
                            caps: ProviderCaps, authorization_ids: dict[str, str],
                            packet_digest: str | None = None) -> None:
@@ -231,7 +249,9 @@ class BudgetLedger:
                                         "pending": None, "unknown_settlement": False})
 
     def reconcile(self, record: ReservationReconciliation, *, rate_card: DatedRateCard | None = None,
-                  usage_receipt_data: bytes | None = None, pricing_receipt_data: bytes | None = None) -> BudgetState:
+                  usage_receipt_data: bytes | None = None, pricing_receipt_data: bytes | None = None,
+                  expected_admission: LiveBudgetAdmission | None = None,
+                  expected_role: str | None = None) -> BudgetState:
         """Later actual owner action only; reuse the existing settlement transition.
 
         Exact state/reservation/attempt binding, actual supplied usage/pricing
@@ -242,6 +262,24 @@ class BudgetLedger:
         from ..providers.live import _json
         from ..snapshot.safeio import SnapshotError, read_ordinary
 
+        if (expected_admission is None) != (expected_role is None):
+            raise AuditError("reconciliation_scope_required", "Supply admission and role together.", 4)
+        if expected_admission is not None:
+            expected_admission = LiveBudgetAdmission.model_validate_json(canonical_json(expected_admission))
+            if expected_role not in {"extraction", "single_pass"}:
+                raise AuditError("invalid_reconciliation_role", "Unknown admitted role.", 4)
+            leaf = Path(os.path.abspath(self.root))
+            root = leaf.parent.parent.parent
+            expected_leaf = admitted_case_leaf(root, expected_admission,
+                                               protocol_digest=expected_admission.protocol_digest,
+                                               packet_digest=expected_admission.packet_digest, role=expected_role)
+            if leaf != expected_leaf:
+                raise AuditError("reconciliation_scope_mismatch", "Ledger must be the exact admitted protocol/packet/role leaf.", 4)
+            stored = LiveBudgetAdmission.model_validate_json(read_ordinary(root, "ADMISSION.json", cap=64 * 1024))
+            if canonical_json(stored) != canonical_json(expected_admission):
+                raise AuditError("budget_admission_mismatch", "Existing durable admission differs.", 4)
+            # Require the original state; never initialize a missing leaf for recovery.
+            read_ordinary(leaf, "budget.json", cap=64 * 1024)
         try:
             fd = self._locked()
         except OSError as exc:
@@ -256,7 +294,8 @@ class BudgetLedger:
                 raise AuditError("reconciliation_receipts_required", "Actual supplied receipt bytes must match pinned nonempty usage/pricing digests.", 4)
             usage_receipt_value = _json(usage_receipt_data)
             pricing_receipt_value = _json(pricing_receipt_data)
-            state = self._read()
+            state = (BudgetState.model_validate_json(read_ordinary(self.root, "budget.json", cap=64 * 1024))
+                     if expected_admission is not None else self._read())
             if state.pending is None or state.pending.reservation_id != record.reservation_id:
                 raise AuditError("reservation_mismatch", "Owner record must name the actual unresolved reservation.", 4)
             if sha256(canonical_json(state)) != record.budget_state_digest:
@@ -278,6 +317,11 @@ class BudgetLedger:
             if len(reserved) != 1:
                 raise AuditError("reconciliation_attempt_unavailable", "One durable pre-send reservation event is required; preserve/investigate missing history.", 4)
             event = reserved[0]
+            if expected_admission is not None:
+                event_admission = LiveBudgetAdmission.model_validate_json(canonical_json(event.get("budget_admission")))
+                if (canonical_json(event_admission) != canonical_json(expected_admission)
+                        or event.get("authorization_id") != expected_admission.authorization_ids[expected_role]):
+                    raise AuditError("reconciliation_scope_mismatch", "Pending attempt belongs to another admitted role or budget.", 4)
             if Reservation.model_validate_json(canonical_json(event["reservation"])) != state.pending:
                 raise AuditError("reconciliation_reservation_changed", "Recorded request liability differs.", 4)
             attempt = Attempt.model_validate_json(canonical_json(event["attempt"]))

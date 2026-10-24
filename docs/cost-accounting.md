@@ -1,0 +1,175 @@
+# Dated cost and unresolved liability source
+
+**Construction only. No pricing, settlement observer, ledger reconciliation,
+provider request, worker or test has run.** No current rates, provider bills,
+observed provider usage or real receipts are supplied by this package. Existing
+protocol illustrations remain explicitly simulated fixtures. Actual rates, budget/data admission and
+normal runtime validation remain future owner actions.
+
+## One calculation and one ledger
+
+`accounting.pricing.derive_cost(card, *, provider, resolved_model, raw_usage,
+service_tier, at) -> CostResult` is the sole decimal category calculation.
+`worst_case_cost(card, *, provider, model, input_tokens, output_tokens, at)` uses
+the same arithmetic for declared request bounds. Results distinguish
+`purpose=usage` from `purpose=liability`; bounds are never provider observations.
+Neither function looks up prices, reads keys or creates an admitted rate card.
+
+`DatedRateCard` requires provider, exact resolved model, owner card ID/digest,
+aware validity interval, explicit USD/per-million-token units, category-semantics
+version, standard service tier, exact decimal-string rates, source reference and
+explicit admission actor/date/receipt. An unadmitted card has null admission
+fields. The card digest binds every other field. Owner metadata/hash consistency
+does not establish the truth of a quote or authenticity of its source.
+
+Supported category contracts:
+
+| Provider semantics | Rate keys and normalization |
+|---|---|
+| `openai-chat-inclusive/1` | `input_uncached`, `input_cached`, `output`; prompt total includes cached reads, so uncached is prompt minus cached. Completion total already includes reasoning/prediction subcategories; do not add them again. Cache writes remain within the declared uncached category under this admitted policy. |
+| `anthropic-cache-split/1` | `input_uncached`, `input_cached_read`, `input_cache_write_5m`, `input_cache_write_1h`, `output`; total input is uncached plus read plus creation, with creation split once by explicit TTL counts. Output total includes thinking; do not add it again. |
+
+Missing/invalid counts, contradictory totals, positive creation without a complete
+TTL breakdown, unsupported extra categories, nonstandard tiers and unsupported
+audio/image/tool charges stay unknown. Anthropic pricing requires reported global
+geography and standard speed when supplied. An explicit zero creation total with
+no TTL breakdown determines both TTL counts as zero mathematically; an absent or
+positive unknown creation total never becomes zero. Raw usage is retained exactly
+as a JSON value, including null/malformed shape, independently of normalization.
+
+The provider adapters request standard tier when a card is supplied and verify
+the resolved tier in usage. A different resolved model/date/card/unknown rate does
+not inherit a cheaper rate. No currency conversion, batch/priority/fast pricing,
+discount, tax, surcharge or unsupported billing category is guessed. Owner review
+must ensure the card's admitted scope is appropriate; a derived token calculation
+is not an actually reconciled provider invoice.
+
+Arithmetic uses Decimal precision 64, an explicit upward USD quantization at
+1e-12, and outward conversion across the existing float ledger seam. Use the
+returned conservative bound, rather than hand-rounding a cap downward. Input
+liability applies the highest admitted input-category rate to the entire declared
+input bound; output uses its inclusive bound. The existing request reserve must
+cover this result before dispatch. Missing/stale/unadmitted or out-of-cap liability
+refuses dispatch. `BudgetLedger` remains the only balance transition authority.
+
+## Explicit optional settlement observation
+
+`HTTPJSONTransport(..., settlement_observer=None, ledger_root=None,
+budget_admission=None)` preserves the earlier constructor arguments. The HTTP
+response itself normally has no dollar bill. A calculated cost alone does not
+automatically settle it: **absent observer stays unknown and blocks a successor**.
+No callback is serialized to or executed by the one-shot HTTP worker.
+
+The optional trusted callback receives `SettlementContext`, bound to the owner
+authorization, reservation/attempt, request/payload and response digests, exact
+provider/requested/resolved model, response ID, raw usage, request-start date and
+the sole `CostResult`. The producer gives it a separate copy and validates its
+`SettlementObservation` against the original sealed bytes. A missing response
+identity, mutated binding, unknown category, mismatched card or failing callback
+keeps cost unknown, preserving the usage and prior attempts.
+
+`providers.settlement.DatedRateSettlementObserver(observer_id=..., rate_card=...)`
+is an optional future injected implementation. It calculates only from actual
+provider-reported usage and an admitted card. Its receipt kind is
+`derived_calculation`, explicitly not `provider_bill`; it returns null for fixture,
+unadmitted or unknown data. Actual external bill observations need a real supplied
+bill reference, distinct provenance and amount. No observer or receipt has been
+created/executed during this construction phase.
+
+`LiveUsage` retains `raw_usage`, `pricing`, `cost_basis`, a separately reported
+bill amount, settlement context/observation and `cost_error`. Derived cost, actual
+owner-supplied bill and fixture simulated cost remain distinct. Replay's current
+external spend is separately zero, not a historical/live price estimate.
+
+## Durable owner root
+
+`LiveOwnerContext` additionally accepts nonsecret `ledger_root`,
+`budget_admission` and optional per-role `settlement_observers`. The source factory
+forwards these to D5's existing experiment engine and producer. Both roles use
+the same declared per-role caps; there is no second balance/scoring layer in D5.
+No real root is selected from the fresh output path or target data.
+
+`LiveBudgetAdmission` binds an actual owner/action/receipt to the absolute local
+root identity, protocol and packet digests, caps digest and both authorization IDs,
+with explicit `per_role_equal_caps` scope. Its content-addressed admission ID is
+checked before storing `ADMISSION.json`. `ledger_root_identity`,
+`budget_admission_id` and `bind_budget_admission` perform identity checks, not
+money creation or external proof. Existing mismatched/unbound nonempty roots are
+refused. A changed root/packet requires a new owner budget admission; it does not
+resolve an old pending liability.
+
+The factory requires a root disjoint from source and fresh outputs before any root
+write. D5 namespaces the existing producer ledgers by protocol/packet/role and
+checks prior pending/unknown state before a new dispatch. Starting a new report
+directory therefore cannot silently reset the liability. A missing observer,
+missing usage or overrun leaves the same reservation pending. Do not delete locks
+by age, replace budget files or relabel actual use as fixture use.
+
+## Later actual owner reconciliation
+
+Ordinary `BudgetLedger.settle` cannot clear an already unknown reservation.
+Use the explicit source API:
+
+```python
+ledger.reconcile(record, rate_card=reviewed_card,
+                 usage_receipt_data=actual_usage_receipt_bytes,
+                 pricing_receipt_data=actual_pricing_receipt_bytes)
+```
+
+`ReservationReconciliation` names the exact current budget-state digest, pending
+reservation, supplied normalized `LiveUsage`, real owner/action date/rationale,
+usage/pricing references and exact byte digests. Supplied nonempty receipt bytes
+are mandatory; nonblank strings alone cannot clear liability. For real usage the
+usage receipt is the same strict `SettlementContext`; the pricing receipt is the
+exact pre-call admitted card for a derived calculation, or an explicit
+`ProviderBillReceipt` normalized from an actually reviewed bill. The latter is
+tagged `owner_supplied_provider_bill`, not independent observation/authentication.
+
+Reconciliation checks durable pre-send event, owner/model/authorization/request/
+payload/attempt/response identities, card, observation and current state under the
+same writer lock. Known recorded response identities cannot be substituted. An
+explicit actual bill may resolve category-pricing ambiguity only when the admitted
+card/model/date and total token/time liabilities are known; it does not invent
+missing totals or silently change the pre-call card. Pending records with missing
+durable history remain blocked for owner investigation, not a guessed no-call zero.
+
+Both normal and owner settlement use one transition, checking reserved and remaining
+caps before subtraction. Invalid/out-of-cap reconciliation is a typed failure;
+balances cannot become negative. Exact supplied receipt bytes are retained in a
+fsynced `owner_reconciliation_validated` event before the atomic state write. The
+event says validated, not a false commit receipt. A failed write keeps the pending
+state; a duplicate after successful settlement cannot debit again. Crash/fsync,
+ownership, receipt authenticity and filesystem races remain runtime-unverified.
+
+The optional `budget-reconcile` CLI requires the same injected activated owner
+context and admitted durable root before any record/config/receipt read. It accepts
+an explicit role, record/config and receipt paths; there is no `--ledger` selector.
+The leaf is derived solely as owner root / admitted protocol digest / admitted
+packet digest / role. Existing `ADMISSION.json`, original budget state and the
+pending attempt's identical admission/role authorization must bind. A missing leaf
+cannot be initialized as recovery. The record pins current state, reservation,
+attempt, response and exact supplied usage/pricing bytes through the existing
+ledger authority. A state race or out-of-cap observation refuses without reset;
+unknown settlement remains blocked until a valid explicit owner reconciliation.
+
+Future trusted launchers may call
+`providers.experiment.reconcile_configured_budget(*, owner_context, config, role,
+record, usage_receipt_data, pricing_receipt_data) -> BudgetState`. This reuses
+`BudgetLedger.reconcile` with optional `expected_admission`/`expected_role` scope
+checks, one existing transition and one pricing authority. It constructs no
+transport, invokes no settlement observer and dispatches no live request. Settling
+an incurred liability does not require renewing an expired dispatch authorization
+or providing credential values. The opaque context schema is unchanged.
+
+Plain CLI/ENV/argv cannot supply credentials or bypass owner activation. A plain
+invocation fails before file reads. No reconciliation command has been run; no
+populated records or actual bill files are shipped.
+
+Official token-field references consulted (no rate lookup):
+[OpenAI Chat Completions](https://developers.openai.com/api/reference/cli/resources/chat/subresources/completions/methods/create)
+describes inclusive completion totals/details and resolved service tiers;
+[Anthropic Messages](https://platform.claude.com/docs/en/api/messages/create)
+and [service tiers](https://platform.claude.com/docs/en/api/service-tiers) describe
+cache/usage fields and standard-only requests. API/model compatibility and actual
+admitted rates still need normal-mode validation; these references are not billing
+evidence.

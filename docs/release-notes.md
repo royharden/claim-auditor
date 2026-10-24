@@ -2,44 +2,57 @@
 
 Version 0.1.0 source continuation, 2026-10-23. **Runtime unverified; not a product
 release or publication.** Nothing was pushed, deployed or connected to real accounts.
+The CLI/demo, tests, benchmarks, exports and GitHub Action have not run.
 
-The source includes immutable local Git/fixture acquisition, bounded static indexing,
-original-byte README inventory, conservative four-way findings, citation reopening,
-inert reports and an input-based offline demo. Fake/replay paired inference keeps
-equal source packets, complete failure/attempt rows, closed artifact verification
-and label-after-inference scoring. Full-index utility remains a separate treatment.
+The source journey now connects frozen local Git/fixture acquisition, original-byte
+README inventory, bounded static indexing, conservative four-way findings, citation
+reopening and inert reports with bound run context. Optional owner declarations
+retain their basis and never prove Git/workflow/provider execution. The expanded
+owned demo contrasts declarations/literal defaults with behavioral claims; its six
+authored sentences are not measured extraction coverage or expected verdicts.
+See the [demo tour](demo-tour.md) and [architecture](architecture.md).
 
-Typed fake/replay provider ports reserve durable liability before attempts. Dormant
-OpenAI-compatible/Anthropic adapters and concrete bounded HTTPS source require future
-owner activation, exact data/model/payload admission, explicit injected credentials
-and token/cost receipts. Default live operation remains refused. No transport,
-provider request or worker has run. Unknown usage/cost is retained, not replaced by
-zero; fixture observations are separately labeled.
+Selected `export-report` uses an independently retained raw RUN manifest pin,
+canonical verification and fresh local output. It preserves only the selected
+report/frozen-source closure, with last-written export bookkeeping. Private source
+may be included. A local copy certifies neither origin/custody nor publication
+permission; interrupted copies stay incomplete. See [offline artifacts](offline-artifacts.md).
 
-Twelve original disclosed DEV families contain 120 authored statements. They are
-neither measured extraction coverage nor human gold/heldout material. DEV staging
-and source-only export bind provenance/seal bytes without claiming enforced custody
-or blindness. Source-first manual inventory is distinct from report-assisted review;
-manual and ruling records retain parent/source/claim/evidence bindings, attribution
-and history. Human action cannot be inferred from an agent-authored record.
+Source-first manual inventory retains parent/source/claim/evidence bindings and
+append-only judgments independently of candidate-extractor omissions. Assisted
+report review remains separate. Actual human gold requires real operator work;
+agent-authored records do not supply it. Twelve disclosed DEV families contain
+120 authored statements, not human gold, heldout material or measured results.
+See [annotation guide](annotation-guide.md).
 
-Operator CLI/configuration and [quickstart](quickstart.md) document future local
-audit, verification, fake/replay assembly, staging and annotation/ruling operations.
-Fake config templates contain explicit missing-fixture failures, not prerecorded
-passing outputs. Fresh output directories and optional independent manifest pins
-make repeated runs reviewable. Normal source has LF checkout policy; fixture bytes
-are preserved without renormalizing existing content.
+Paired source-only inference preserves equal packets, failure/attempt rows,
+closure-before-gold scoring and separate full-index utility. Dataset aggregation
+uses the existing verifier/scorer and retains ancestry/pins and unknown usage.
+Durable live case entry is first-entry only: pending/unknown liability refuses,
+and settled used history also refuses continuation. Owner reconciliation settles
+liability but does not finish or resume an interrupted comparison. See
+[paired arms](paired-arms.md#durable-case-entry-and-reconciliation).
 
-Validation to date is source inspection and syntax parsing only. Dependencies have
-not been installed/locked for runtime activation. No tests, CLI/demo, parser worker,
-hostile-input containment, socket/TLS/DNS/spawn or integrated user journey has run.
-The one-shot HTTP worker is a documented design delta from the original process
-allowlist and needs future activation/containment review. Source controls are not
-proof of security, deadline enforcement, isolation or model/API compatibility.
+Dormant bounded HTTPS adapters require explicit injected owner activation,
+credentials, typed admission and durable protocol/packet/role roots. Plain CLI
+live/reconciliation paths refuse before input reads without that context.
+Explicit reconciliation selects the exact admitted leaf; no arbitrary ledger
+selector, unlock or reset is provided. One ledger and one Decimal pricing authority
+retain raw usage, supplied receipt bytes and derived-versus-bill-versus-fixture
+provenance. Missing rates/categories/observers remain unknown and block successors.
+No actual rate, bill, cost, receipt or ledger operation occurred. See
+[cost accounting](cost-accounting.md) and [provider modes](provider-modes.md).
 
-Required live extraction/single-pass comparisons and human-adjudicated evaluation
-remain **not measured / comparative acceptance incomplete**. Actual source rights,
-human review and independent heldout custody still need staffed operator action.
-No headline scores or actual cost/latency results are claimed. GitHub Action
-workflow scaffolding and execution remain prohibited in Dirty Mode; **Action not
-yet run**. Independent nonauthoring product acceptance remains pending.
+The [quickstart](quickstart.md) contains future operator commands. Validation here
+is source inspection and syntax parsing only. Dependencies have not been installed
+or locked. The one-shot HTTP worker is a source design delta from the original
+process allowlist; activation/containment review remains deferred. Runtime security,
+resource enforcement, provider compatibility and integrated journeys are unverified.
+
+Actual human adjudication, independent rights/custody/heldout controls, live
+comparisons and measured cost/latency/quality results remain unperformed or
+unmeasured. Comparative acceptance is incomplete. **Action not yet run**; workflow
+scaffolding and execution are prohibited while Dirty Mode is open. Independent
+product acceptance remains pending. See [limitations](LIMITATIONS.md) and the
+[validation plan](validation-plan.md). MIT licensing and disclosed fixture provenance
+are unchanged; no third-party project code was vendored.

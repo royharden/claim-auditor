@@ -1,127 +1,79 @@
 # Claim Auditor
 
-Claim Auditor inventories bounded README assertions and compares supported Python
-static propositions with an immutable local source snapshot. Findings retain exact
-README byte spans, evidence or replayable search coverage, and one of
-`verified`, `partial`, `missing`, or `unknown`.
+Claim Auditor inventories bounded README assertions against an immutable local
+Python source snapshot. Findings retain original byte spans, cited evidence or
+replayable search coverage, and `verified`, `partial`, `missing` or `unknown`.
+Static declarations do not establish runtime behavior, security or performance.
 
-**Construction baseline — runtime unverified.** Dependencies have not been
-installed or locked (`uv.lock` is not yet present), the CLI/demo has not run, and no tests or GitHub Actions have
-run. Human-adjudicated evaluation is not measured; comparative acceptance is
-incomplete. Live provider calls are disabled.
+**Source construction — runtime unverified.** Dependencies are not installed or
+locked, no CLI/demo/tests/benchmark has run, and no provider has been called.
+Human-adjudicated comparison is unmeasured; **Action not yet run**. No public
+release, upload or deployment has occurred. CI/deployment scaffolding is deferred.
 
-R02 includes dormant OpenAI-compatible/Anthropic adapter and bounded stdlib HTTPS
-transport **source**. Default live execution remains refused. No transport, worker,
-provider or credential has been exercised; later owner activation must bind exact
-data/model/prompt/endpoint/budget identities and provide real authorized receipts.
-See [provider modes](docs/provider-modes.md) for the source interfaces and unknown
-usage/cost handling. There is no live-enabling CLI shortcut.
+## Start with the owned demo
 
-CA10 GitHub workflow source and execution are deferred until Dirty Mode closes;
-no CI or deployment scaffolding is included in this construction baseline.
-
-## Later local activation
-
-Python 3.12+ and uv are intended. After authorized runtime activation, resolve and
-review dependencies and generate `uv.lock`, then use the following commands. These
-are intended instructions, not evidence that they have succeeded:
+After separately authorized runtime setup, use Python 3.12+ and a trusted installed
+tool outside the audited target. Resolve/review dependencies and generate
+`uv.lock` before activation; see the [operator quickstart](docs/quickstart.md).
+These are future commands, not execution evidence:
 
 ```console
-uv sync
 uv run claim-auditor demo --offline --out results-local/demo-001
 uv run claim-auditor verify-report results-local/demo-001/run
 ```
 
-The demo creates owned source containing a declared function, an invented API and
-an operational claim. Verdicts are generated through snapshot, inventory, index,
-policy, citation and report services; no prerecorded verdict output is shipped.
-Actual evidence and coverage are stored alongside `report.json`, Markdown and
-escaped static HTML. A later tamper exercise must show integrity refusal.
+Choose a fresh private output directory. The demo authors source, then constructs
+its snapshot and report through the actual audit pipeline; it ships no prerecorded
+findings, gold or scores. Its six authored sentences distinguish a declaration and
+literal default from an invented API, contrary default and universal runtime claim.
+Six sentences are not a measured extraction count or six expected verdicts.
+Follow the [two-minute demo tour](docs/demo-tour.md) to inspect actual future
+artifacts and explain only the evidence they contain.
 
-For an existing complete local Git object store, supply a full object ID:
+## Follow the source journeys
 
-```console
-uv run claim-auditor snapshot --repo /path/to/local-repo --commit FULL_OBJECT_ID --out results-local/snapshot-001
-uv run claim-auditor audit --snapshot results-local/snapshot-001 --readme README.md --mode rules --out results-local/audit-001
-uv run claim-auditor verify-report results-local/audit-001
-```
-
-No target code or README commands are run. Worktree indirection, archives, shallow
-or alternate/promisor object stores are outside the supported acquisition boundary;
-an ordinary owned fixture source is also accepted with `snapshot --fixture PATH`.
-Every output path must be new. CLI errors use nonzero status; a complete report
-does not mean the repository is correct.
-
-## Architecture
-
-- `contracts`: strict wire records and source-derived identity helpers.
-- `snapshot`, `index`, `patterns`: frozen bytes and bounded static propositions.
-- `inventory`: CommonMark block accounting and exact original-byte claims.
-- `citations`: sole span/coverage reopening and report-integrity service.
-- `audit`: deterministic negation-aware verdict reduction and run lifecycle.
-- `report`: local JSON/JSONL, Markdown and inert HTML; owned demo inputs.
-- `evaluation`: source-only packet preparation, one-to-one matching and scorer.
-- `providers`, `screen`, `accounting`: explicit replay/disabled-live boundary,
-  conservative model-input hold and bounded durable reservation port.
-
-The [operator quickstart](docs/quickstart.md) gives the future command sequence;
-[construction notes](docs/release-notes.md) record what remains unverified.
-
-| Operator purpose | Source entrypoints |
+| Purpose | Detailed guide |
 |---|---|
-| Freeze and audit owned source | `snapshot`, `audit`, `demo`, `verify-report` |
-| Disclosed DEV source packet and fake input configuration | `dev-packet`, `paired-input` |
-| Equal-packet fake/replay assembly and closed artifacts | `paired-run`, `paired-verify`, `paired-score` |
-| DEV source staging with explicit provenance and pinned seal | `dev-stage`, `dev-export` |
-| Full source-first review or distinct report-assisted review | `annotation-package --snapshot` or `--run` |
-| Explicit manual inventory, judgments and selected exports | `annotation-record`, `annotation-ruling`, `annotation-export` |
-| Append-only judgment history | `rulings-import`, `rulings-export` |
+| Freeze owned source, audit and reopen citations/context | [Operator quickstart](docs/quickstart.md), [report provenance](docs/report-provenance.md) |
+| Hand off selected report evidence and frozen source locally | [Pinned offline artifacts](docs/offline-artifacts.md) |
+| Review every source assertion independently of extractor omissions | [Source-first annotation](docs/annotation-guide.md) |
+| Prepare disclosed DEV packets and explicit fake/replay inputs | [Quickstart](docs/quickstart.md), [provider modes](docs/provider-modes.md) |
+| Understand inference closure, separate labels and case-entry limits | [Paired arms](docs/paired-arms.md), [dataset evaluation](docs/dataset-evaluation.md) |
+| Review dated pricing, durable admission and explicit reconciliation | [Cost accounting](docs/cost-accounting.md) |
+| Maintain the implementation and understand its boundaries | [Architecture](docs/architecture.md), [limitations](docs/LIMITATIONS.md), [construction notes](docs/release-notes.md) |
 
-These paths have **not run**. Fake input templates contain explicit missing-fixture
-failures, never passing predictions or measured model output. Paired scoring reads
-separate labels only after inference verification; an unpinned verification is
-self-consistency only. Manual inventory is independent of candidate-extractor
-omissions. Human attribution requires real operator action and explicit IDs;
-agent judgments never become human gold. DEV seals bind bytes, never heldout
-admission, enforced custody or blindness. See [provider modes](docs/provider-modes.md)
-for strict configuration and unknown cost/usage handling.
+`export-report` requires an independently retained raw `RUN.json` SHA256 and fresh
+output. It copies only the verified report/source closure under `run/`; copied
+source may be private. Local consistency is not origin, custody or publication
+permission. Optional audit/demo owner declarations remain declarations, not observed
+Git, workflow or provider activity; absent provenance stays unknown.
 
-## Evidence and measurement
+Manual source-first inventory covers the original README independently of candidate
+extraction; assisted report review is separately labeled. Agent proposals cannot
+become human gold through an attribution string. DEV fixtures and fake input
+configuration are not heldout evidence or measured outcomes. Fake templates contain
+explicit missing-fixture failures, not passing predictions.
 
-Rules mode uses no model. Replay is explicitly identified and does not become a
-live result. No external provider spend occurred during construction; future live
-cost and usage are unknown, not a zero-cost claim.
+Plain CLI `live-experiment` and `budget-reconcile` refuse before input reads without
+a trusted injected activated owner context. Config, argv, environment and target
+text cannot supply that authority or credentials. Dormant adapter/HTTPS source has
+not run. Reconciliation selects only the admitted root/protocol/packet/role leaf;
+it settles receipt-bound liability through the existing ledger and cannot resume
+an interrupted experiment. Used case history remains refused even after settlement;
+do not switch roots or identities to bypass it. No current rates or populated real
+receipts are supplied.
 
-| Required evidence | Current status |
-|---|---|
-| Snapshot → audit → report and tamper execution | Not run |
-| Hostile-input/resource/no-execution checks | Not run |
-| Independent corpus and actual human labels | Not measured / not staffed |
-| Packet grep/path and deterministic comparison | Not measured |
-| Live extraction and single-pass LLM comparison | Not measured; live disabled |
-| Exact-revision GitHub Action report artifact | Action not yet run |
-| Independent nonauthoring product acceptance | Pending |
+## What remains unperformed
 
-Scoring uses separately supplied labels after inference closes. Agent labels are
-never human gold. An admitted evaluation protocol must freeze source/label custody,
-rights, matcher, taxonomy, packets, code, providers and shared caps before heldout
-access. No committed headline quality number is present.
+Snapshot-to-report/tamper execution, hostile-input containment, dependency and
+provider compatibility, actual human labels and independent heldout custody,
+benchmark/live comparisons, cost/latency measurements and the exact-revision GitHub
+Action remain unverified or unmeasured. Independent product acceptance is pending.
+No quality, superiority or security guarantee follows from static source inspection.
+See [limitations](docs/LIMITATIONS.md) and the [validation plan](docs/validation-plan.md).
 
-## Limits
-
-Static declaration is not importability, runtime availability or behavior. The
-supported taxonomy covers exact paths, syntactic declarations, literal metadata,
-dependency/script declarations, literal environment references and named bounded
-code patterns. Operational, behavioral and marketing propositions remain unknown.
-Incomplete scope cannot justify an absence accusation. See
-[contracts](docs/contracts.md), [threat model](docs/threat-model.md), and
-[limitations](docs/LIMITATIONS.md).
-
-This source was authored by coding agents under explicit static-only Dirty Mode.
-Focused source inspection and syntax parsing are the only permitted checks for
-this phase. Nothing has been pushed, published, deployed or connected to real
-accounts. MIT licensed; no third-party project code was vendored.
-
-Normal source uses LF checkout policy. `fixtures/**` is byte-preserving (`-text`)
-because provenance binds original bytes. No renormalization or fixture rewrite was
-performed for this policy; later checkout/digest conformance remains unverified.
+MIT licensed; no third-party project code was vendored. Disclosed DEV source
+provenance remains with its fixtures; authored inputs are not external benchmark
+or human-label receipts. Normal source uses LF checkout policy; `fixtures/**` is
+byte-preserving because provenance binds original bytes. No fixture renormalization
+was performed; checkout/digest conformance remains unverified.

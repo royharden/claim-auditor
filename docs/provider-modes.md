@@ -151,6 +151,27 @@ allowance. Default HTTP cost remains unknown, so automatic retry cannot occur on
 an unaccounted failure. Actual provider schema/model compatibility and rate/token
 receipts must be checked at activation.
 
+Late authorization/deadline, reservation, settlement or event-storage errors return
+a typed incomplete response retaining prior attempts and usage. A reserved attempt
+is retained before storage/send; known provider observations are never erased by
+a failed retry admission. The producer attempts a `live_source_response` event
+where storage permits. If that event cannot be persisted, the returned error marks
+`response_event_persistence_failed`; no durable receipt is claimed. Initial missing
+or disabled authorization still refuses before transport. These failure paths have
+been inspected statically, not exercised.
+
+`LiveExperimentConfig` is a nonsecret owner input with required caps, trusted system
+prompts, declared models, exact typed authorizations, endpoint allowlists and
+explicit per-role `rate_cards` for
+both extraction/single-pass roles. No credential fields, adapter import paths or
+target-selected endpoints are accepted. `providers.experiment.run_configured_live`
+defaults to refusal without explicit activation and externally injected credential
+headers. Its `LiveOwnerContext` is an opaque in-memory caller object, not a wire or
+environment setting. The CLI `live-experiment` branch checks that context and both
+role bindings before reading even config/protocol/target paths. Plain CLI invocation
+does not enable live execution. The factory forwards to D5's one pinned LOCK/packet/
+artifact engine; it does not duplicate accounting or human/custody admission.
+
 Official references consulted for source construction on 2026-10-23:
 [OpenAI Chat Completions](https://developers.openai.com/api/reference/cli/resources/chat/subresources/completions/methods/create)
 documents JSON-schema response format, completion caps and prompt/completion usage;
