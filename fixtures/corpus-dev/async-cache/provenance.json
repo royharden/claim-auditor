@@ -17,18 +17,18 @@
   "source_root": "source",
   "source_inventory": [
     {
-      "path": "cache.py",
-      "sha256": "e3f4415036c879ef220d362850a468512cb998da89a1af27d30b6c198cbf67cd",
-      "size": 275
-    },
-    {
       "path": "README.md",
       "sha256": "a5c9a130180f3be79e1a4a431d6c7b8217a0a66fce7c9cf3c4bc9c58218a1bdf",
       "size": 608
+    },
+    {
+      "path": "cache.py",
+      "sha256": "e3f4415036c879ef220d362850a468512cb998da89a1af27d30b6c198cbf67cd",
+      "size": 275
     }
   ],
   "inventory_digest_method": "sha256(sorted compact JSON source_inventory, ensure_ascii default)",
-  "source_inventory_digest": "74dea95f61ef9be65f53daceb3c3ab3be07e8491d436f2142ba9f42a8d3688a7",
+  "source_inventory_digest": "2e4d73374cc8feef56d74c015a7288f09ff61473b0717e8198aa4bc83eb14f69",
   "authored_assertion_count": 9,
   "extraction_status": "NOT_RUN",
   "label_status": "UNLABELED_AGENT_PROPOSALS",

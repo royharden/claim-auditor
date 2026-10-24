@@ -17,6 +17,11 @@
   "source_root": "source",
   "source_inventory": [
     {
+      "path": "README.md",
+      "sha256": "8271968af22533174174f88a3db2fa34d073e8733452157ccba77533894b229a",
+      "size": 445
+    },
+    {
       "path": "ledger.py",
       "sha256": "bcc77f287f1fb2013308edce7efa859c0651ad632b4904da2a830c591d3adf18",
       "size": 325
@@ -25,15 +30,10 @@
       "path": "pyproject.toml",
       "sha256": "ac4c22f9a0d15afdf3cae02f8fe6bd2661e4b5cff92d1644130f5525f61c17c3",
       "size": 158
-    },
-    {
-      "path": "README.md",
-      "sha256": "8271968af22533174174f88a3db2fa34d073e8733452157ccba77533894b229a",
-      "size": 445
     }
   ],
   "inventory_digest_method": "sha256(sorted compact JSON source_inventory, ensure_ascii default)",
-  "source_inventory_digest": "2a3d727d463f0feb8779ce92958548f69064e964444a62e4d7261ae3c2734f2e",
+  "source_inventory_digest": "a170d21da57fbd474a8662b9cdff094f64b928bffc2df6f9997b2b445ce2ceec",
   "authored_assertion_count": 9,
   "extraction_status": "NOT_RUN",
   "label_status": "UNLABELED_AGENT_PROPOSALS",

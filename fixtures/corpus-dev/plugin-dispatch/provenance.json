@@ -17,14 +17,14 @@
   "source_root": "source",
   "source_inventory": [
     {
-      "path": "dispatch.py",
-      "sha256": "28718556c27278ebeeb93219a3603814a628210a9dbb4fd739829ec17b928b8a",
-      "size": 329
-    },
-    {
       "path": "README.md",
       "sha256": "5441777b16d885cfa25d66c87c861696ecbdf04c89fb3f4e154da19b948c3537",
       "size": 515
+    },
+    {
+      "path": "dispatch.py",
+      "sha256": "28718556c27278ebeeb93219a3603814a628210a9dbb4fd739829ec17b928b8a",
+      "size": 329
     },
     {
       "path": "registry.py",
@@ -33,7 +33,7 @@
     }
   ],
   "inventory_digest_method": "sha256(sorted compact JSON source_inventory, ensure_ascii default)",
-  "source_inventory_digest": "34fbc860684482282b1d36cbd928b8b4033908b400147189cf607adc5aa63cd1",
+  "source_inventory_digest": "9b58e2460032d2d116eba1c300a91baa5be5d9b682cbe069c5ece720d6daf245",
   "authored_assertion_count": 8,
   "extraction_status": "NOT_RUN",
   "label_status": "UNLABELED_AGENT_PROPOSALS",

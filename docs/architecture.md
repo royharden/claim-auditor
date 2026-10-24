@@ -104,6 +104,21 @@ producer dispatch. All-arm preparation failure records remain; no resume contrac
 or history deletion is supplied. A settled balance or fresh output directory is
 not permission to repeat a case.
 
+One shared helper derives every durable case path.
+`accounting.admitted_case_leaf(root, admission, *, protocol_digest, packet_digest, role)`
+is pure lexical derivation of the admitted root/protocol/packet/role leaf: it
+checks the admission's identity digests and role, then returns a path. It performs
+no I/O, does not bind or adopt an admission, does not inspect or create a ledger,
+does not resolve filesystem links and does not authorize dispatch.
+`accounting.bind_budget_admission` keeps the durable authority: it pins the owner
+admission, caps and authorization IDs to the root. Callers delegate path
+derivation to the helper and do not rebuild leaf paths themselves:
+`providers.experiment.reconcile_configured_budget` and the expected-admission
+check in `BudgetLedger.reconcile` select the exact leaf with it, and the
+live runner (`evaluation.live_runner`) derives both role leaves with it before
+`_check_case_entry` and before calling `bind_budget_admission`. This map
+describes constructed source only; the delegation has not been executed.
+
 ## Extending a static predicate
 
 Add only an explicit bounded grammar/pattern with raw-span retention, corresponding

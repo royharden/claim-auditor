@@ -17,6 +17,11 @@
   "source_root": "source",
   "source_inventory": [
     {
+      "path": "README.md",
+      "sha256": "0621c470227c67a8a82b36c27c2d17eb21385221650b2e119bd7e0224c52c9b5",
+      "size": 698
+    },
+    {
       "path": "formatting.py",
       "sha256": "4270e7b81a62eb8805a58d71834de6aa3dc86c34fc6975e8af8dadfb4ebce568",
       "size": 373
@@ -25,15 +30,10 @@
       "path": "pyproject.toml",
       "sha256": "e849bbca990cfb2df0731511f90ae5327714875714c88e7da05550945aaadca4",
       "size": 76
-    },
-    {
-      "path": "README.md",
-      "sha256": "0621c470227c67a8a82b36c27c2d17eb21385221650b2e119bd7e0224c52c9b5",
-      "size": 698
     }
   ],
   "inventory_digest_method": "sha256(sorted compact JSON source_inventory, ensure_ascii default)",
-  "source_inventory_digest": "61eda8f93005ab2147fe479ef93b441a79440de19126025cac61fa79d97615d0",
+  "source_inventory_digest": "68ac0b8283783dd95f724610f39495a168742717e410f9a75386a48cc3bf960e",
   "authored_assertion_count": 11,
   "extraction_status": "NOT_RUN",
   "label_status": "UNLABELED_AGENT_PROPOSALS",

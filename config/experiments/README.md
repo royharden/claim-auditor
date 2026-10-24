@@ -1,6 +1,8 @@
 # Dormant experiment source
 
-These prompts and the unadmitted LOCK template are source material. Nothing here has been executed. No corpus access, credential lookup, client/worker instantiation, provider call, cost, score, custody receipt or human approval is supplied by a template.
+These prompts and the unadmitted LOCK template are source material. Nothing here has been executed.
+
+No source code opens these files by name. A future owner passes their exact bytes as strings: `extraction.txt` becomes `system_prompts["extraction"]` and `single-pass.txt` becomes `system_prompts["single_pass"]`, either directly or inside `LiveExperimentConfig.system_prompts`. Runs record the supplied bytes as `prompts/extraction.txt` and `prompts/single_pass.txt` (role keys, underscore). Those run copies are not these template files. No corpus access, credential lookup, client/worker instantiation, provider call, cost, score, custody receipt or human approval is supplied by a template.
 
 The keyless DEV path is `prepare_dev_packet(snapshot_root, out)`, followed by the explicitly fake/replay `run_paired` API when later authorized for runtime validation. DEV preparation writes `packet.json` and `DEV.json`, using the same raw-anchor builder as admitted preparation. It creates no LOCK or rights/custody/access attestation. D4's template writer can supply identity-bound `fixture_not_supplied` failures; those are failures, never measured passing predictions.
 
