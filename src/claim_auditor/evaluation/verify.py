@@ -310,6 +310,15 @@ def _experiment_controls(manifest: dict, artifacts: dict[str, bytes], packet: Ev
     closing = "closed_live_unaccepted" if context["execution_kind"] == "live" else "closed_fixture_unaccepted"
     if manifest["state"] not in {closing, "failed_input"}:
         raise AuditError("paired_identity_mismatch", "execution class was relabeled", 4)
+    if manifest["state"] == "failed_input":
+        # Input closure fails before any producer exists: no grant/request was
+        # recorded, so none can be checked. Fail closed if one is present.
+        for arm in ("live_extraction", "live_single_pass"):
+            info = manifest["arms"][arm]
+            if (type(info) is not dict or info.get("status") != "failed_input" or not _INFO >= set(info)
+                    or any(path.startswith(f"{arm}-budget/") for path in artifacts)):
+                raise AuditError("paired_attempt_integrity", "failed input cannot carry provider dispatch records", 4)
+        return lock
     from claim_auditor.providers import AnthropicAdapter, OpenAICompatibleAdapter
 
     paths = {packet.readme_path, *(entry.path for entry in packet.scope_entries),
@@ -415,7 +424,8 @@ def _verify(root: Path, source: Path, expected_digest: str | None) -> dict:
                 or canonical_json(source_control.entries) != canonical_json(packet.scope_entries)):
             raise AuditError("paired_identity_mismatch", "source control scope differs before raw-byte access", 4)
         control_paths = {entry.path for entry in source_control.entries} | {gap.path for gap in source_control.exclusions if gap.path is not None}
-        for arm in ("live_extraction", "live_single_pass"):
+        # A failed-input run has no grant; _experiment_controls proved none was recorded.
+        for arm in (() if manifest["state"] == "failed_input" else ("live_extraction", "live_single_pass")):
             if not control_paths <= set(manifest["arms"][arm]["authorization"]["allowed_paths"]):
                 raise AuditError("paired_identity_mismatch", "unapproved control scope before source-byte access", 4)
     snapshot = load_snapshot(source)

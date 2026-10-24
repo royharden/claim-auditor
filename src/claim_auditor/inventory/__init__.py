@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Iterator
 
 from claim_auditor.contracts import (
-    Claim, ClaimKind, Inventory, InventoryBlock, Limits, PipelineError,
+    AuditError, Claim, ClaimKind, Inventory, InventoryBlock, Limits, PipelineError,
     Predicate, Snapshot, Span, sha256, stable_id,
 )
 from claim_auditor.inventory.raw import RawDocument
@@ -165,6 +165,14 @@ def _fence_imports(content: str, imports: dict[str, tuple[str, str] | None]) -> 
 
 
 def extract_inventory(snapshot: Snapshot, root: Path, readme: str = "README.md") -> Inventory:
+    # A README absent from the snapshot is an input error (2); one excluded at snapshot time is an
+    # incomplete audit (3). Only included sources reach read_source, whose failures are integrity (4).
+    entry = next((item for item in snapshot.entries if item.path == readme), None)
+    if entry is None:
+        raise AuditError("readme_not_in_snapshot", readme, 2)
+    if entry.status != "included":
+        gap = next((item.reason for item in snapshot.exclusions if item.path == readme), entry.status)
+        return Inventory(snapshot_id=snapshot.snapshot_id, readme_path=readme, readme_sha256=entry.sha256, claims=[], blocks=[], complete=False, errors=[PipelineError(stage="inventory", reason="readme_excluded", detail=gap)], extraction_version=EXTRACTION_VERSION)
     raw = read_source(snapshot, root, readme)
     limits = Limits()
     errors: list[PipelineError] = []

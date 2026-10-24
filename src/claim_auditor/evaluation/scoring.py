@@ -240,7 +240,8 @@ def score_predictions(predictions_path: Path, gold_path: Path, out: Path) -> Eva
         # available to the already closed inference run.
         families: dict[str, set[str]] = defaultdict(set)
         for row in gold:
-            if row.claim.span.snapshot_id != manifest.snapshot_id or row.claim.snapshot_id != manifest.snapshot_id:
+            # Claim carries its snapshot identity only through its Span.
+            if row.claim.span.snapshot_id != manifest.snapshot_id:
                 raise AuditError("gold_scope_mismatch", "all gold must belong to the verified closed-run snapshot")
             families[row.claim.span.snapshot_id].add(row.family_id)
         options = families.get(manifest.snapshot_id, set())
@@ -248,8 +249,7 @@ def score_predictions(predictions_path: Path, gold_path: Path, out: Path) -> Eva
             raise AuditError("ambiguous_family", "closed-run snapshot must map to exactly one curator family")
         remapped: list[PredictionRow] = []
         for row in predictions:
-            if row.finding is not None and (row.finding.claim.snapshot_id != manifest.snapshot_id
-                                          or row.finding.claim.span.snapshot_id != manifest.snapshot_id):
+            if row.finding is not None and row.finding.claim.span.snapshot_id != manifest.snapshot_id:
                 raise AuditError("prediction_scope_mismatch", "prediction differs from verified closed-run snapshot")
             remapped.append(row.model_copy(update={"family_id": next(iter(options))}))
         predictions = remapped

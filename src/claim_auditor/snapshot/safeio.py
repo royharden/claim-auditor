@@ -59,7 +59,8 @@ def bounded_scandir(path: Path, cap: int) -> list[os.DirEntry[str]]:
 
 
 def _identity(info: os.stat_result) -> tuple[int, int, int, int, int]:
-    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_mode
+    # File type only: Windows lstat() synthesizes execute bits from the extension; fstat() does not.
+    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, stat.S_IFMT(info.st_mode)
 
 
 def _ordinary(info: os.stat_result, directory: bool) -> None:

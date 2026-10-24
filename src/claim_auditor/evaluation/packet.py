@@ -57,6 +57,20 @@ def _check_lock(lock: EvaluationLock) -> None:
 def _build_packet(snapshot: Snapshot, input_path: Path) -> EvaluationPacket:
     """Sole raw-anchor builder shared by DEV and admitted preparation."""
     readme_path = "README.md"
+    # Same lookup as inventory.extract_inventory: a README absent from the snapshot is an
+    # input error (2); one excluded at snapshot time keeps its gap reason and raw digest.
+    # Only included sources reach read_source, whose failures are integrity (4).
+    entry = next((item for item in snapshot.entries if item.path == readme_path), None)
+    if entry is None:
+        raise AuditError("readme_not_in_snapshot", readme_path, 2)
+    if entry.status != "included":
+        gap = next((item.reason for item in snapshot.exclusions if item.path == readme_path), entry.status)
+        detail = f"{gap}; raw sha256 {entry.sha256}"
+        if gap == "file_byte_limit":
+            raise AuditError("input_too_large", f"mandatory README exceeds policy; every paired arm must retain this failure ({detail})")
+        if gap == "unsupported_encoding":
+            raise AuditError("unsupported_encoding", f"packet README must be strict UTF-8 ({detail})")
+        raise AuditError("readme_excluded", detail, 3)
     readme_raw = read_source(snapshot, input_path, readme_path)
     if len(readme_raw) > Limits().max_readme_bytes:
         raise AuditError("input_too_large", "mandatory README exceeds policy; every paired arm must retain this failure")

@@ -249,6 +249,9 @@ class PredicateResult(WireModel):
 
 
 class Finding(WireModel):
+    # `model_proposal` is a wire field; opt out of pydantic's protected `model_` namespace (merged with WireModel config).
+    model_config = ConfigDict(protected_namespaces=())
+
     claim: Claim
     verdict: Verdict
     support_relation: Relation

@@ -356,7 +356,8 @@ def main() -> None:
             output.append(dict(path=item["path"], error=None, **result))
         except (SyntaxError, ValueError, RecursionError, MemoryError) as error:
             output.append(dict(path=item["path"], error=type(error).__name__, facts=[], flags=[], exports={}))
-    print(json.dumps({"enforced": True, "error": None, "files": output}, ensure_ascii=False, allow_nan=False, separators=(",", ":")))
+    # ASCII-only output: under -I the piped stdout encoding is the platform default (cp1252 on Windows).
+    print(json.dumps({"enforced": True, "error": None, "files": output}, ensure_ascii=True, allow_nan=False, separators=(",", ":")))
 
 
 if __name__ == "__main__":
