@@ -19,7 +19,7 @@ from ..contracts import (
     ProviderRequest, SimulatedUsage, Span, canonical_json, sha256, stable_id,
 )
 from ..screen import screen_original_strings
-from .http_json import BoundedJSONTransport, JSONReply, validate_endpoint
+from .http_json import BoundedJSONTransport, HTTPJSONTransport, JSONReply, StaticJSONTransport, validate_endpoint
 from .port import _validate_fixture, _validate_request, request_digest
 from .settlement import validate_settlement_observation
 
@@ -213,6 +213,11 @@ def _admit(request: ProviderRequest, payload: bytes, authorization: LiveAuthoriz
     if (authorization.input_token_upper_bound > request.caps.request_input_tokens
             or len(payload) > authorization.max_request_bytes):
         raise AuditError("live_input_liability", "Token/byte admission exceeds reserved request liability.")
+    # Provenance comes from the published class, never a self-declared label.
+    kind = getattr(transport, "execution_kind", None)
+    if not ((kind == "live" and type(transport) is HTTPJSONTransport)
+            or (kind == "fixture" and type(transport) is StaticJSONTransport)):
+        raise AuditError("invalid_transport_policy", "Live requires HTTPJSONTransport; fixture requires StaticJSONTransport.")
     if (transport.authorization_id != authorization.authorization_id
             or transport.hidden_retries != 0 or transport.follows_redirects
             or transport.execution_kind not in {"fixture", "live"}):
@@ -416,6 +421,9 @@ def produce_live(request: ProviderRequest, *, system_prompt: str,
                     proposals = _proposals(request, text)
         except (AuditError, ValidationError, ValueError, OSError, ImportError, TypeError, RecursionError, MemoryError) as exc:
             reason = exc.reason if isinstance(exc, AuditError) else "invalid_provider_output"
+        except Exception:
+            # Any other failure still reaches settle/closed below; liability stays recorded.
+            reason = "provider_transport_failure" if observed is None else "invalid_provider_output"
         try:
             state = ledger.settle(reservation.reservation_id,
                                   input_tokens=observed.input_tokens if observed else None,
@@ -428,6 +436,8 @@ def produce_live(request: ProviderRequest, *, system_prompt: str,
         status = "invalid_output" if reason else "proposed"
         if state is None or state.unknown_settlement:
             status = "incomplete"
+        # Attempt cost is current external spend (fake: 0.0, as verify requires);
+        # a fixture's simulated cost settles the ledger and stays in usage/closed event.
         attempt = attempt.model_copy(update={"status": status, "error": reason or ("unsettled_liability" if status == "incomplete" else None),
                                              "input_tokens": observed.input_tokens if observed and mode == "live" else None,
                                              "output_tokens": observed.output_tokens if observed and mode == "live" else None,

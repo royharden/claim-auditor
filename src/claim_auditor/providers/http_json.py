@@ -141,9 +141,17 @@ class HTTPJSONTransport:
             metadata, separator, raw = envelope.partition(b"\n")
             if not separator or len(metadata) > 4096:
                 raise AuditError("invalid_transport_reply", "Malformed trusted worker envelope.")
-            value = json.loads(metadata)
-            if value.get("error") is not None:
-                raise AuditError(value["error"], "Single bounded HTTPS attempt failed; settlement unknown.", 3)
+            try:
+                value = json.loads(metadata)
+            except ValueError as exc:
+                raise AuditError("invalid_transport_reply", "Malformed trusted worker metadata.") from exc
+            if not isinstance(value, dict):
+                raise AuditError("invalid_transport_reply", "Malformed trusted worker metadata.")
+            error = value.get("error")
+            if error is not None:
+                if not isinstance(error, str) or not re.fullmatch(r"[a-z_]{1,64}", error):
+                    raise AuditError("invalid_transport_reply", "Malformed trusted worker error code.")
+                raise AuditError(error, "Single bounded HTTPS attempt failed; settlement unknown.", 3)
             if type(value.get("status")) is not int or len(raw) > max_response_bytes:
                 raise AuditError("invalid_transport_reply", "Malformed trusted worker response.")
             return JSONReply(endpoint, value["status"], raw, time.monotonic() - started, 1, None, None)
