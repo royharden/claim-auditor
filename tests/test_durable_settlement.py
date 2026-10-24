@@ -152,12 +152,21 @@ class DurableSettlementTests(unittest.TestCase):
         self.assertEqual((root / "ADMISSION.json").read_bytes(), before)
 
     def test_fresh_runner_outputs_reuse_unresolved_role_root_before_any_dispatch(self):
-        """what_bug_this_catches: selecting another output path bypassing an unresolved role ledger."""
+        """what_bug_this_catches: selecting another output path bypassing an unresolved role ledger.
+
+        Liability is pending in the second role while the first carries used history,
+        so a per-role check that reports history first would mask unsettled liability.
+        """
         boundary = runner_boundary_inputs(self.base, self.request, self.prompt, self.adapter, self.grant)
-        self.pending_fixture(boundary.leaf)
-        before = (boundary.leaf / "budget.json").read_bytes()
+        pending = boundary.leaves["single_pass"]
+        self.pending_fixture(pending)
+        boundary.leaves["extraction"].mkdir(parents=True)
+        (boundary.leaves["extraction"] / "requests.json").write_bytes(b"")
+        before = (pending / "budget.json").read_bytes()
         with patch("claim_auditor.evaluation.live_runner._check_lock"), \
                 patch("claim_auditor.evaluation.live_runner.prepare_evaluation", side_effect=boundary.prepare), \
+                patch("claim_auditor.evaluation.live_runner.bind_budget_admission") as bind, \
+                patch("claim_auditor.evaluation.live_runner._admit") as admit, \
                 patch("claim_auditor.evaluation.live_runner._run_paired") as dispatch, \
                 patch.object(StaticJSONTransport, "post_json") as post:
             for name in ("fresh-output-a", "fresh-output-b"):
@@ -168,7 +177,9 @@ class DurableSettlementTests(unittest.TestCase):
                 failure = json.loads((out / "failed-before-inference" / "FAILED.json").read_bytes())
                 self.assertEqual((failure["reason"], failure["provider_attempts"]), ("unsettled_liability", 0))
                 self.assertEqual(set(failure["arms"]), set(boundary.arms))
-                self.assertEqual((boundary.leaf / "budget.json").read_bytes(), before)
+                self.assertEqual((pending / "budget.json").read_bytes(), before)
+            bind.assert_not_called()
+            admit.assert_not_called()
             dispatch.assert_not_called()
             post.assert_not_called()
 
@@ -188,12 +199,16 @@ class DurableSettlementTests(unittest.TestCase):
         out = self.base / "fresh-output-after-settlement"
         with patch("claim_auditor.evaluation.live_runner._check_lock"), \
                 patch("claim_auditor.evaluation.live_runner.prepare_evaluation", side_effect=boundary.prepare), \
+                patch("claim_auditor.evaluation.live_runner.bind_budget_admission") as bind, \
+                patch("claim_auditor.evaluation.live_runner._admit") as admit, \
                 patch("claim_auditor.evaluation.live_runner._run_paired") as dispatch, \
                 patch("claim_auditor.evaluation.live_runner.produce_live") as produce, \
                 patch.object(StaticJSONTransport, "post_json") as post:
             with self.assertRaises(AuditError) as caught:
                 run_live_experiment(boundary.protocol, self.source, out, **boundary.arguments)
             self.assertEqual(caught.exception.reason, "case_continuation_not_supported")
+            bind.assert_not_called()
+            admit.assert_not_called()
             dispatch.assert_not_called()
             produce.assert_not_called()
             post.assert_not_called()

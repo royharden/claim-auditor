@@ -4,7 +4,8 @@ from datetime import datetime, timedelta, timezone
 import json
 from types import SimpleNamespace
 
-from claim_auditor.contracts import EvaluationLock, LiveAuthorization, canonical_json, sha256
+from claim_auditor.accounting import admitted_case_leaf, budget_admission_id, ledger_root_identity
+from claim_auditor.contracts import EvaluationLock, LiveAuthorization, LiveBudgetAdmission, canonical_json, sha256
 from claim_auditor.providers.http_json import JSONReply, StaticJSONTransport
 from claim_auditor.providers.live import OpenAICompatibleAdapter
 from claim_auditor.providers.port import request_digest
@@ -52,6 +53,8 @@ def runner_boundary_inputs(base, request, prompt, adapter, grant):
 
     Only the role-history check and canonical failure writer are under test.
     No fixture pretends that LOCK/rights/custody or real inference was admitted.
+    An explicit durable root needs its matching content-bound admission, and the
+    role leaf comes only from the sole admitted_case_leaf derivation.
     """
     packet, caps = request.packet, request.caps
     roles = ("extraction", "single_pass")
@@ -71,7 +74,17 @@ def runner_boundary_inputs(base, request, prompt, adapter, grant):
     protocol.write_bytes(raw)
     pin = sha256(raw)
     durable = base / "durable"
-    leaf = durable / pin / packet.packet_digest / "extraction"
+    admission = LiveBudgetAdmission(
+        admission_id="pending", owner_id="SYNTHETIC-NOT-OWNER",
+        admitted_at="2020-01-01T00:00:00+00:00", protocol_digest=pin,
+        packet_digest=packet.packet_digest, ledger_root_identity=ledger_root_identity(durable),
+        caps_digest=sha256(canonical_json(caps)),
+        authorization_ids={role: grant.authorization_id for role in roles},
+        liability_scope="per_role_equal_caps", receipt_reference="SYNTHETIC-NOT-A-BUDGET-RECEIPT",
+    )
+    admission = admission.model_copy(update={"admission_id": budget_admission_id(admission)})
+    leaves = {role: admitted_case_leaf(durable, admission, protocol_digest=pin,
+                                       packet_digest=packet.packet_digest, role=role) for role in roles}
 
     def prepare_fixture(protocol_path, snapshot_root, out):
         out.mkdir(parents=True)
@@ -81,5 +94,7 @@ def runner_boundary_inputs(base, request, prompt, adapter, grant):
                      models={role: request.model for role in roles},
                      authorizations={role: grant for role in roles},
                      transports={role: StaticJSONTransport(authorization_id=grant.authorization_id, replies=[]) for role in roles},
-                     adapters={role: adapter for role in roles}, ledger_root=durable)
-    return SimpleNamespace(protocol=protocol, leaf=leaf, arms=arms, prepare=prepare_fixture, arguments=arguments)
+                     adapters={role: adapter for role in roles}, ledger_root=durable,
+                     budget_admission=admission)
+    return SimpleNamespace(protocol=protocol, leaf=leaves["extraction"], leaves=leaves, arms=arms,
+                           prepare=prepare_fixture, arguments=arguments)

@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from claim_auditor.accounting import BudgetLedger, budget_admission_id, ledger_root_identity
+from claim_auditor.accounting import BudgetLedger, admitted_case_leaf, budget_admission_id, ledger_root_identity
 from claim_auditor.cli import main
 from claim_auditor.contracts import (
     AuditError, BudgetState, LiveBudgetAdmission, LiveExperimentConfig, LiveUsage,
@@ -121,7 +121,9 @@ class OwnerReconciliationTests(unittest.TestCase):
         self.assertIs(result, inputs.initial)
         self.assertEqual(reconcile.call_count, 1)
         ledger = reconcile.call_args.args[0]
-        self.assertEqual(ledger.root, inputs.root / inputs.admission.protocol_digest / inputs.admission.packet_digest / "single_pass")
+        self.assertEqual(ledger.root, admitted_case_leaf(
+            inputs.root, inputs.admission, protocol_digest=inputs.admission.protocol_digest,
+            packet_digest=inputs.admission.packet_digest, role="single_pass"))
         self.assertEqual(reconcile.call_args.args[1], inputs.record)
         self.assertIs(reconcile.call_args.kwargs["usage_receipt_data"], inputs.usage_bytes)
         self.assertIs(reconcile.call_args.kwargs["pricing_receipt_data"], inputs.price_bytes)
@@ -158,8 +160,15 @@ class OwnerReconciliationTests(unittest.TestCase):
     def test_ledger_rejects_wrong_protocol_leaf_and_cross_role_before_read_or_lock(self):
         """what_bug_this_catches: replacing a selected admitted role leaf with another otherwise valid budget path."""
         inputs = self.inputs()
-        wrong = [inputs.root / ("c" * 64) / inputs.admission.packet_digest / "extraction",
-                 inputs.root / inputs.admission.protocol_digest / inputs.admission.packet_digest / "single_pass"]
+        # Both wrong leaves are otherwise valid admitted derivations: another
+        # protocol's admission at the same root, and the sibling role.
+        other = inputs.admission.model_copy(update={"protocol_digest": "c" * 64})
+        other = other.model_copy(update={"admission_id": budget_admission_id(other)})
+        fields = dict(packet_digest=inputs.admission.packet_digest)
+        wrong = [admitted_case_leaf(inputs.root, other, protocol_digest=other.protocol_digest,
+                                    role="extraction", **fields),
+                 admitted_case_leaf(inputs.root, inputs.admission, protocol_digest=inputs.admission.protocol_digest,
+                                    role="single_pass", **fields)]
         with patch("claim_auditor.snapshot.safeio.read_ordinary") as read, \
                 patch.object(BudgetLedger, "_locked") as lock:
             for leaf in wrong:
