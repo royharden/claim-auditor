@@ -1,14 +1,17 @@
 """Original-byte coordinates and inert serialization controls."""
 
 from html.parser import HTMLParser
+from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from claim_auditor.citations import validate_span
-from claim_auditor.contracts import AuditReport
+from claim_auditor.contracts import AuditReport, sha256
 from claim_auditor.inventory.raw import RawDocument
 from claim_auditor.report import render_html, render_markdown
+from claim_auditor.provenance import capture_run_context
 
 from .support import claim, finding, frozen_source, inventory_for, span_for
 
@@ -29,6 +32,14 @@ class Tags(HTMLParser):
 
 
 class CoordinateReportTests(unittest.TestCase):
+    def controlled_raw_input(self, base, raw):
+        # Unit-only metadata/read port. This is not an acquired bare-CR bundle
+        # and does not exercise load_snapshot or manifest-integrity acceptance.
+        snapshot, root = frozen_source(base)
+        entries = [entry.model_copy(update={"sha256": sha256(raw), "size": len(raw)})
+                   if entry.path == "README.md" else entry for entry in snapshot.entries]
+        return snapshot.model_copy(update={"entries": entries}), root
+
     def test_crlf_non_bmp_combining_and_second_occurrence_reopen(self):
         """what_bug_this_catches: code-point offsets or first-match quotes replacing raw bytes."""
         raw = "😀 e\u0301\r\nrepeat\r\nrepeat\r\n".encode("utf-8")
@@ -53,15 +64,15 @@ class CoordinateReportTests(unittest.TestCase):
 
     def test_bare_cr_line_maps_agree_with_citation_reopening(self):
         """what_bug_this_catches: CommonMark bare-CR lines disagreeing with LF-only citation counts."""
-        # Source-inspection defect repaired by reusing RawDocument's line mapping;
-        # this regression remains unexecuted during source construction.
+        # Independent span unit contract: real acquisition still refuses lone CR.
         raw = b"first\rsecond\r"
         with TemporaryDirectory() as directory:
-            snapshot, root = frozen_source(Path(directory), readme=raw)
+            snapshot, root = self.controlled_raw_input(Path(directory), raw)
             start = raw.index(b"second")
             span = span_for(snapshot, raw, start=start, end=start + 6)
             self.assertEqual((span.start_line, span.end_line), (2, 2))
-            validate_span(snapshot, root, span)
+            with patch("claim_auditor.citations.read_source", return_value=raw):
+                validate_span(snapshot, root, span)
 
     def test_half_open_unicode_line_ends_agree_for_all_newline_forms(self):
         """what_bug_this_catches: end-exclusive spans being assigned to the following line."""
@@ -69,7 +80,7 @@ class CoordinateReportTests(unittest.TestCase):
         for separator in (b"\n", b"\r\n", b"\r"):
             with self.subTest(separator=separator), TemporaryDirectory() as directory:
                 raw = first + separator + b"second" + separator
-                snapshot, root = frozen_source(Path(directory), readme=raw)
+                snapshot, root = self.controlled_raw_input(Path(directory), raw)
                 after_first = len(first) + len(separator)
                 before_second_newline = after_first + len(b"second")
                 for start, end, expected in (
@@ -80,7 +91,8 @@ class CoordinateReportTests(unittest.TestCase):
                 ):
                     span = span_for(snapshot, raw, start=start, end=end)
                     self.assertEqual((span.start_line, span.end_line), expected)
-                    validate_span(snapshot, root, span)
+                    with patch("claim_auditor.citations.read_source", return_value=raw):
+                        validate_span(snapshot, root, span)
 
     def test_empty_file_span_remains_a_valid_existence_pointer(self):
         """what_bug_this_catches: shared line mapping invalidating a zero-byte file citation."""
@@ -97,9 +109,15 @@ class CoordinateReportTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             snapshot, _ = frozen_source(Path(directory), readme=payload)
             atom = claim(span_for(snapshot, payload))
+            context, errors = capture_run_context(
+                run_id="synthetic-inert-report-unit", started_at=datetime.now(timezone.utc).isoformat(),
+                snapshot=snapshot, mode="rules", provider=None, model=None,
+                prompt_digest=None, packet_digest=None,
+            )  # Actual trusted observations only at future activation, never now.
+            self.assertEqual(errors, [])
             report = AuditReport(snapshot=snapshot, inventory=inventory_for(snapshot, atom),
                                  findings=[finding(atom, "unknown")], evidence=[], coverage=[],
-                                 errors=[], mode="rules", evaluation_status="not measured")
+                                 errors=[], mode="rules", evaluation_status="not measured", run_context=context)
             rendered = render_html(report)
             parser = Tags()
             parser.feed(rendered)

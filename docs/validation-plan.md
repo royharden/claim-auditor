@@ -26,11 +26,12 @@ After INT closes Dirty Mode and authorizes normal validation:
 4. Activate paired-run orchestration and ruling-history regressions against the
    published interfaces. Preserve failure rows, equal packet identities and
    immutable annotation history. No annotation test constitutes a human action.
-5. Under normal independent review, add and execute the remaining hostile-input probes:
-   Git config/hooks/filter/alternates/replaces and corruption, parser hard limits and
-   import-shadow sentinels, file replacement races, symlink/junction refusal on Windows,
-   interrupted publication, malicious report/citation mutations and escaped UI inspection.
-   These require actual platform execution; the current unit seams do not prove them.
+5. Under normal independent review, activate the hostile Git/path/resource source
+   probes, then add remaining actual platform race/OS-enforcement probes: Git corruption
+   and replacement objects, real memory/time exhaustion, concurrent file/ancestor
+   replacement, Windows junction/handle enforcement, interrupted publication, malicious
+   report/citation mutations and escaped UI inspection. Mocked refusal seams do not
+   establish actual OS race resistance, memory enforcement or watchdog termination.
 
 Proposed invocation from the product repository, **not run during construction**:
 
@@ -65,6 +66,12 @@ or dependency installation is added here.
 | `tests/test_custody_lifecycle.py` | Local-fixture source/label exports preserve pinned bytes, agent history/dissent and stale-evidence refusal without inferring real custody. |
 | `tests/test_manual_annotation.py` | Source-first raw coverage/parents preserve extractor omissions, refuse duplicate atoms and forged completeness, and keep agent proposals separate from human gold. |
 | `tests/test_dev_packet.py` | DEV packets remain prepared/unadmitted/not-run, create no LOCK/receipts and cannot substitute for admitted locked evaluation. |
+| `tests/test_hostile_git.py` | Full immutable revision only; target config/hooks/filters/helpers and shadow modules stay inert; unsupported stores refuse and unavailable LFS/gitlinks cannot accuse absence. |
+| `tests/test_hostile_paths.py` | Traversal/device/stream paths refuse before opening; symlinks/reparse observations and observable file/ancestor changes fail closed. |
+| `tests/test_resource_boundaries.py` | Source/aggregate/compressed/decompressed caps; memory-enforcement refusal, timeout/overflow failure scopes, isolated import shadows and explicit lone-CR unavailability. |
+| `tests/test_dataset.py` | Every inference case closes before any label read; duplicate identity/ancestry refuses; raw case gold pins differ from aggregate manifest pins; missing rows/attempts cannot vanish; utility/fake/underpowered results remain separate and inconclusive. |
+| `tests/test_supported_extraction.py` | Handcomputed tiny controls keep supported-kind target rates separate from all-atom recall/omissions and transfer the independent manual denominator to the existing scorer. |
+| `tests/test_run_context.py` | Legacy null context is diagnostic only; new render/verify rejects missing, swapped target/run context or digest; owner declarations never become observed execution. |
 
 Every test has a short `what_bug_this_catches` explanation. `tests/support.py` supplies
 small typed inputs. Its synthetic scorer findings intentionally isolate scorer logic;
@@ -115,6 +122,129 @@ human action or human-adjudicated label. An empty candidate inventory is an inte
 omission control, not a measured passing report. Preliminary proposal export must retain
 pending raw blocks and use `agent-proposals.jsonl`, while human gold export refuses agent
 inventory. No sample size, human staffing or promoted acceptance obligation is reduced.
+
+Hostile Git fixture construction exists only inside future test bodies/helpers. It
+requires trusted installed Git, an empty trusted template/hook path, no inherited Git
+configuration, no remote and no background maintenance. Hostile configuration is
+written after the fixture commit; no fixture-builder command runs afterwards. Harmless
+sentinels can only write a marker inside the test-created temporary tree. Missing Git
+or actual symlink capability is a visible activation/setup failure, not a passing skip.
+Deterministic identity/reparse mocks exercise observed-refusal seams; they do not prove
+Windows handle locking or resistance to real concurrent ancestor replacement.
+
+The explicit ingress/span decision keeps snapshot `text_error` rejection of
+`unsupported_lone_cr_line_endings`; LF/CRLF remain admitted without rewriting frozen
+bytes. The separate span-coordinate authority supports LF/CRLF/CR. Its raw-byte unit
+probes use controlled metadata/read ports, not an acquired bare-CR bundle or a
+manifest-integrity proof. A separate real acquisition probe asserts the precise
+unavailable/incomplete scope and unknown resolution, never absence or a clean audit.
+
+Resource fixture prerequisites are explicit: trusted Git with the declared object
+format support; Python 3.12/dependencies; ordinary temporary directories; actual
+symlink capability for the link probe; and enforceable Windows Job Objects or POSIX
+limits for the real parser probe. Missing capability must fail setup visibly. The
+parent handshake/timeout/overflow cases inject inert in-memory process fixtures;
+their success cannot prove that a real OS kills or bounds a hostile worker. Aggregate
+text/compressed-copy tests reduce a guard ceiling within the future test process to
+avoid large fixtures, while the decompressed-blob case uses a modest compressible
+owned Git blob above the real file cap. None of these fixtures has been created now.
+
+The late live-port refusal source is reconciled with typed incomplete responses:
+unknown settlement blocks a successor without a transport call; a retry reservation
+failure preserves the earlier physical attempt and fixture usage; response-event
+persistence failure retains observations and explicitly discloses the missing event.
+These use static injected fixture transports only, never actual provider accounting.
+
+Dataset source fixtures use the actual future fake/replay paired writer and verifier,
+including the distinct full-index utility. All those closures precede creation of the
+synthetic agent label inputs in fixture setup. The dataset's canonical byte-read port
+is guarded to fail if any label is reached before all cases verify. No passing report,
+score, locked admission or human/custody receipt is handwritten. This is future unit
+and integration source, not evidence that aggregation/scoring or label reads ran.
+Normal activation must freeze the same source/version/caps across every case; tiny
+two-ancestor agent/fake controls cannot satisfy promoted human/live/sample targets.
+
+Supported-kind extraction target keys are checked alongside the retained all-atom
+metrics. Tiny controls explicitly distinguish one matched supported atom out of two
+supported labels from two matched atoms out of three total labels; unsupported-only
+rates stay undefined rather than perfect. Manual omission handoff retains an omitted
+unsupported atom in the same scorer denominator. These are handcomputed expectations
+in future test source, not executed or invented benchmark results. No target-floor
+generator or new metric implementation is introduced.
+
+New report fixtures use the actual `capture_run_context` constructor only inside
+future test bodies, or the actual audit producer for closed artifacts. No context
+capture or source hash function has been invoked during construction. Legacy nullable
+wire fields remain parseable diagnostics and cannot authorize new render/verify.
+Owner-supplied revisions are explicitly `owner_declared`; workflow references remain
+unknown unless declared, and none is observed Git/Action/model-call proof. Artifact
+mutation cases start from real future producer/verifier output and reseal only to
+exercise the canonical cross-binding checks; there is no parallel context verifier.
+
+Pricing and settlement controls use synthetic dated cards only inside future test
+bodies. Inclusive cache/reasoning totals, Anthropic split cache TTLs, stale/unadmitted
+and mismatched cards, and outward decimal liability rounding call the sole production
+pricing authority. No current prices have been looked up or calculated. Synthetic
+provider-shaped settlement contexts exercise binding without constituting actual
+provider observations, bills, owner admission or spend evidence.
+
+Durable-root controls retain one actual future fixture producer attempt and its
+expanded usage record through missing receipt bytes, stale state, over-cap settlement
+and atomic state-save refusal. Exact synthetic receipt bytes must be durable before
+state transition. A focused runner boundary injects the LOCK guard and preparation
+explicitly, so it proves only pending-role-root refusal across fresh output paths;
+it does not prove locked admission, rights/custody or a live journey. The configured
+factory control mocks transport construction and the runner, checking root/admission
+and optional observer forwarding without any provider, credential lookup or worker.
+
+Selected offline export controls start with actual future `audit_snapshot` output
+and `verify_report`, using an external raw RUN pin. The same canonical verifier must
+reopen `out/run` before last-written `EXPORT.json`; bookkeeping confers no origin,
+custody, workflow or publication authority. Negative controls retain canonical
+incomplete-run diagnostics, refuse mismatched pins, extras, unsafe required control
+source and reparse flags, and preserve interrupted outputs. A mutation after an
+early artifact copies must prevent closure at the final original-byte recheck.
+Injected copy failures/reparse metadata do not prove OS crash or race containment;
+later activation must exercise real ordinary-file/link/platform behavior. No export,
+artifact hashing, context capture, report verification or test has run now.
+
+Trusted-tool separation controls inject only the guard's module-location input
+for early-refusal units: audit must refuse before target loads, context observation
+or writes; export must refuse before manifest reads or destination creation. An
+injected resolved alias is a unit probe, not a real Windows junction claim. A
+separate future canonical audit pair changes the target while retaining the same
+observed installed-tool identity; it must use the actual provenance authority.
+Existing strict-context and owner-declaration controls remain unchanged.
+
+The owned demo consumer checks retained original README and source bytes directly,
+plus the published literal-default `value=3`, stronger returns-for-every-input and
+contrary `value=30` inputs. One future canonical audit consumes generated positive
+and contrary literal evidence and leaves behavioral/operational assertions unknown,
+without a handwritten verdict/gold table or target import. Do not infer model,
+runtime throughput or workflow observations from these owned examples.
+
+Later activation order for these changed seams: resolve the trusted interpreter and
+dependencies after Dirty Mode closes; exercise real tool/target/output and platform
+link separation; generate the owned source and audit actual evidence/context; exercise
+dated synthetic pricing and pending-liability/factory faults; then reopen a pinned
+local export and interrupted copies with the canonical verifier. Real owner rate,
+budget, usage/bill and human/custody admission remains separate from synthetic controls.
+
+Owner reconciliation entry controls use the exact trusted context and existing
+admission, deriving protocol/packet/role leaves without accepting a caller leaf.
+Default function and CLI calls must refuse before config/receipt reads; selected
+receipt byte objects reach the sole existing transition unchanged. Wrong admitted
+leaf/role or stored owner binding must refuse before ledger mutation. A shared runner
+unit fixture preserves the original pending-liability probe and adds one future
+reconciled-case refusal: original history remains, all required failure rows remain,
+and no producer or transport dispatch occurs. Reconciliation settles liability and
+does not grant case continuation. These are synthetic/injected unit controls, not
+actual owner actions or proof of admitted locked execution.
+
+Later activation of this entrypoint requires actual owner-selected admission and
+existing state first, supplied pinned receipt bytes second, and preserved history
+inspection before any separate inference authorization. No arbitrary leaf, fresh
+output, receipt reference alone or cleared liability can authorize replay.
 
 ## Remaining acceptance
 

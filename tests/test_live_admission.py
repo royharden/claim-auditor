@@ -1,19 +1,17 @@
 """Future fixture-only live-port probes; no actual owner grant, receipt or HTTP call."""
 
-from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
-from claim_auditor.contracts import AuditError, LiveAuthorization, canonical_json, sha256
-from claim_auditor.providers.http_json import JSONReply, StaticJSONTransport
-from claim_auditor.providers.live import OpenAICompatibleAdapter, produce_live
-from claim_auditor.providers.port import request_digest
-from claim_auditor.snapshot import read_source
+from claim_auditor.contracts import AuditError, BudgetState, canonical_json
+from claim_auditor.providers.http_json import StaticJSONTransport
+from claim_auditor.providers.live import produce_live
 
-from .provider_support import ledger_for, request_for
-from .support import frozen_source, packet_for
+from .provider_support import ledger_for
+from .live_support import fixture_json_reply, fixture_live_inputs
 
 
 class LiveAdmissionTests(unittest.TestCase):
@@ -21,36 +19,10 @@ class LiveAdmissionTests(unittest.TestCase):
         temporary = TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.base = Path(temporary.name)
-        snapshot, root = frozen_source(self.base)
-        self.prompt = "Synthetic offline regression input. Return bounded JSON."
-        self.request = request_for(packet_for(snapshot, read_source(snapshot, root, "README.md")))
-        self.request = self.request.model_copy(update={"prompt_digest": sha256(self.prompt.encode())})
-        self.adapter = OpenAICompatibleAdapter()
-        payload = self.adapter.build_request(self.request, self.prompt, None)
-        # Synthetic authorization-shaped fixture, not an actual permission or
-        # tokenizer/cost/operator receipt. Only StaticJSONTransport consumes it.
-        self.authorization = LiveAuthorization(
-            enabled=True, authorization_id="SYNTHETIC-TEST-NOT-OWNER-GRANT",
-            authorized_by="SYNTHETIC-TEST-NO-REAL-OWNER",
-            expires_at=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
-            provider="openai_compatible", endpoint="https://provider.invalid/v1/chat/completions",
-            request_digest=request_digest(self.request), payload_digest=sha256(payload),
-            snapshot_manifest_digest=snapshot.manifest_digest,
-            allowed_paths=[entry.path for entry in snapshot.entries], input_token_upper_bound=20,
-            tokenizer_receipt="SYNTHETIC-TEST-NOT-TOKENIZER-EVIDENCE",
-            worst_case_cost_receipt="SYNTHETIC-TEST-NOT-A-COST-RECEIPT",
-            max_request_bytes=65536, max_response_bytes=4096, anthropic_version=None,
-        )
+        self.request, self.prompt, self.adapter, self.authorization, _ = fixture_live_inputs(self.base)
 
     def reply(self, **changes):
-        value = dict(model=self.request.model, id="fixture-response",
-                     usage={"prompt_tokens": 10, "completion_tokens": 5},
-                     choices=[{"finish_reason": "stop", "message": {"content": json.dumps({"atoms": []})}}])
-        fields = dict(endpoint=self.authorization.endpoint, status_code=200,
-                      body=canonical_json(value), elapsed_seconds=1.0, physical_attempts=1,
-                      settled_cost_usd=0.1, cost_receipt="SYNTHETIC-FIXTURE-NOT-SETTLEMENT")
-        fields.update(changes)
-        return JSONReply(**fields)
+        return fixture_json_reply(self.request, self.authorization, **changes)
 
     def produce(self, *, authorization=None, request=None, replies=None, ledger=None):
         authorization = self.authorization if authorization is None else authorization
@@ -69,6 +41,12 @@ class LiveAdmissionTests(unittest.TestCase):
         self.assertEqual((response.status, response.mode), ("proposed", "fake"))
         self.assertFalse(response.comparative_complete)
         self.assertEqual(response.usage[0].origin, "fixture")
+        self.assertEqual(response.usage[0].cost_basis, "fixture")
+        self.assertEqual(response.usage[0].reported_bill_usd, 0.1)
+        self.assertEqual(response.usage[0].raw_usage, {"prompt_tokens": 10, "completion_tokens": 5})
+        self.assertIsNone(response.usage[0].settlement_context)
+        self.assertIsNone(response.usage[0].settlement_observation)
+        self.assertEqual(response.usage[0].pricing.error, "rate_card_missing")
         self.assertEqual(response.usage[0].cost_usd, 0.1)  # synthetic fixture settlement
         self.assertIsNone(response.attempts[0].input_tokens)
         self.assertIsNone(response.attempts[0].elapsed_seconds)
@@ -116,11 +94,60 @@ class LiveAdmissionTests(unittest.TestCase):
                 self.assertEqual(len(response.attempts), 1)
                 observed = response.usage[0].input_tokens if missing == "tokens" else response.usage[0].cost_usd
                 self.assertIsNone(observed)
-                before = (ledger_root / "attempts.jsonl").read_bytes()
-                with self.assertRaises(AuditError) as caught:
-                    self.produce(ledger=ledger)
-                self.assertEqual(caught.exception.reason, "unsettled_liability")
-                self.assertEqual((ledger_root / "attempts.jsonl").read_bytes(), before)
+                before = (ledger_root / "budget.json").read_bytes()
+                with patch.object(StaticJSONTransport, "post_json") as post:
+                    successor = self.produce(ledger=ledger)
+                    post.assert_not_called()
+                self.assertEqual((successor.status, successor.error), ("incomplete", "unsettled_liability"))
+                self.assertEqual(successor.attempts, [])
+                self.assertEqual((ledger_root / "budget.json").read_bytes(), before)
+                state = BudgetState.model_validate_json(before)
+                self.assertTrue(state.unknown_settlement)
+                self.assertIsNotNone(state.pending)
+
+    def test_late_reservation_refusal_retains_prior_physical_attempt_and_usage(self):
+        """what_bug_this_catches: a retry budget/admission failure discarding an already observed physical attempt."""
+        ledger = ledger_for(self.base / "late-budget", self.request)
+        reserve = ledger.reserve
+        count = 0
+
+        def refuse_retry(*args, **kwargs):
+            nonlocal count
+            count += 1
+            if count > 1:
+                raise AuditError("budget_exhausted", "synthetic late reservation refusal", 3)
+            return reserve(*args, **kwargs)
+
+        with patch.object(ledger, "reserve", side_effect=refuse_retry):
+            response = self.produce(ledger=ledger, replies=[self.reply(status_code=429), self.reply()])
+        self.assertEqual((response.status, response.error), ("incomplete", "budget_exhausted"))
+        self.assertEqual(len(response.attempts), 1)
+        self.assertEqual(response.attempts[0].error, "provider_http_error")
+        self.assertEqual(len(response.usage), 1)
+        self.assertEqual(response.usage[0].origin, "fixture")
+        self.assertEqual(response.usage[0].input_tokens, 10)
+        self.assertFalse(response.comparative_complete)
+
+    def test_failed_response_persistence_retains_observations_without_claiming_event(self):
+        """what_bug_this_catches: a final event-store failure losing observations or falsely claiming a durable response."""
+        root = self.base / "response-store"
+        ledger = ledger_for(root, self.request)
+        record = ledger.record_event
+
+        def fail_response(value):
+            if value["phase"] == "live_source_response":
+                raise OSError("synthetic response event store failure")
+            return record(value)
+
+        with patch.object(ledger, "record_event", side_effect=fail_response):
+            response = self.produce(ledger=ledger)
+        self.assertEqual(response.status, "incomplete")
+        self.assertIn("response_event_persistence_failed", response.error)
+        self.assertEqual(len(response.attempts), 1)
+        self.assertEqual(len(response.usage), 1)
+        events = [json.loads(line) for line in (root / "attempts.jsonl").read_bytes().splitlines()]
+        self.assertEqual(sum(event["phase"] == "closed" for event in events), 1)
+        self.assertFalse(any(event["phase"] == "live_source_response" for event in events))
 
     def test_wrong_endpoint_hidden_attempt_or_oversize_reply_remains_failure(self):
         """what_bug_this_catches: foreign endpoints, hidden retries or oversized bodies becoming a normal proposal."""
