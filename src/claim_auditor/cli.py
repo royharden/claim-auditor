@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
-from .contracts import AuditError, ManualAnnotation, RunDeclarations, canonical_json
+from .contracts import AuditError, ManualAnnotation, RunDeclarations, canonical_json, exit_for_state
 
 if TYPE_CHECKING:
     from .providers.experiment import LiveOwnerContext
@@ -144,8 +144,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _exit_for_manifest(manifest: object) -> int:
-    state = getattr(manifest, "state")
-    return {"complete": 0, "failed_input": 2, "incomplete": 3, "failed_integrity": 4}.get(state, 3)
+    return exit_for_state(getattr(manifest, "state"))
 
 
 def _manual_draft(snapshot_root: Path, path: Path) -> ManualAnnotation:
@@ -154,7 +153,7 @@ def _manual_draft(snapshot_root: Path, path: Path) -> ManualAnnotation:
     The service supplies content-addressed ID/supersession when recording. No
     status, completion observation, identity or action is inferred in this helper.
     """
-    from .snapshot import load_snapshot
+    from .snapshot import load_snapshot, require_snapshot_root
     from .snapshot.safeio import read_ordinary
 
     def unique(pairs: list[tuple[str, object]]) -> dict:
@@ -172,6 +171,7 @@ def _manual_draft(snapshot_root: Path, path: Path) -> ManualAnnotation:
     draft = ManualAnnotation.model_validate_json(canonical_json({
         **fields, "annotation_id": "draft:not-recorded", "supersedes_annotation_id": None,
     }))
+    require_snapshot_root(snapshot_root)
     if draft.source_manifest_digest != load_snapshot(snapshot_root).manifest_digest:
         raise AuditError("manual_source_mismatch", "Draft source differs from the selected frozen snapshot.", 4)
     return draft
@@ -202,6 +202,11 @@ def _run_declarations(path: Path | None) -> RunDeclarations | None:
 def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        if getattr(args, "snapshot", None) is not None:
+            from .snapshot import require_snapshot_root
+
+            # Every --snapshot is a user-supplied frozen root: absent root is input (2), never integrity (4).
+            require_snapshot_root(args.snapshot)
         if args.command == "snapshot":
             from .snapshot import create_fixture_snapshot, create_git_snapshot
 
@@ -227,7 +232,13 @@ def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | Non
             print(canonical_json(result).decode("utf-8"))
             status = _exit_for_manifest(result)
             if status == 0 and args.fail_on == "missing":
-                report = AuditReport.model_validate_json((args.out / "report.json").read_bytes())
+                from .snapshot.safeio import read_ordinary
+
+                try:
+                    report = AuditReport.model_validate_json(read_ordinary(args.out, "report.json", 64 * 1024 * 1024))
+                except (OSError, ValueError) as exc:
+                    # The just-written artifact is unreadable: integrity, not input.
+                    raise AuditError("report_integrity", str(exc), 4) from exc
                 if any(finding.verdict == "missing" for finding in report.findings):
                     return 5
             return status
@@ -495,6 +506,10 @@ def main(argv: list[str] | None = None, *, owner_context: LiveOwnerContext | Non
     except (ValidationError, ValueError, UnicodeError, OSError, RecursionError, MemoryError) as exc:
         print(canonical_json({"error": "invalid_input", "detail": str(exc)}).decode("utf-8"), file=sys.stderr)
         return 2
+    except Exception as exc:
+        # Unexpected execution failure is an incomplete run (3), never an uncontracted exit 1.
+        print(canonical_json({"error": "unexpected_failure", "detail": f"{type(exc).__name__}: {exc}"}).decode("utf-8"), file=sys.stderr)
+        return 3
 
 
 if __name__ == "__main__":

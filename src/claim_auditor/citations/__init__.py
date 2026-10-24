@@ -6,7 +6,7 @@ from pathlib import Path
 
 from claim_auditor.contracts import (
     AuditError, AuditReport, CoverageReport, Evidence, PredictionRow, RunManifest, Snapshot, Span,
-    canonical_json, sha256,
+    canonical_json, exit_for_state, sha256,
 )
 from claim_auditor.index import INDEX_VERSION, PARSER_VERSION, StaticIndex, build_index, resolve
 from claim_auditor.patterns import PATTERN_VERSION
@@ -88,10 +88,16 @@ def verify_report(run_root: Path) -> RunManifest:
     """
     root = Path(run_root)
     try:
+        (root / "RUN.json").lstat()
+    except (FileNotFoundError, NotADirectoryError) as error:
+        # Absent supplied run root/top manifest is input (2); missing inner artifacts stay integrity (4).
+        raise AuditError("run_not_found", str(root), 2) from error
+    except OSError:
+        pass  # Other access failures are classified by the integrity reader below.
+    try:
         manifest = RunManifest.model_validate_json(read_ordinary(root, "RUN.json", 4 * 1024 * 1024))
         if manifest.state != "complete":
-            code = 4 if manifest.state == "failed_integrity" else 3
-            raise AuditError("run_not_complete", manifest.state, code)
+            raise AuditError("run_not_complete", manifest.state, exit_for_state(manifest.state))
         if manifest.completed_at is None or manifest.errors:
             raise AuditError("invalid_completed_run", manifest.run_id, 4)
         required = {"report.json", "inventory.json", "claims.jsonl", "findings.jsonl", "evidence.jsonl", "coverage.jsonl", "predictions.jsonl", "report.md", "report.html", "context.json", "context.jsonl"}

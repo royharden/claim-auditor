@@ -180,7 +180,7 @@ def export_report(run_root: Path, out: Path, *, manifest_digest: str) -> dict[st
     if not isinstance(manifest_digest, str) or not re.fullmatch(r"[a-f0-9]{64}", manifest_digest):
         raise AuditError("invalid_export_pin", "an external full lowercase RUN.json SHA256 is mandatory")
     if any(str(value).startswith(("\\\\", "//")) or ".." in Path(value).parts for value in (run_root, out)):
-        raise AuditError("unsafe_export_path", "local nontraversing source/destination paths required")
+        raise AuditError("invalid_export_path", "local nontraversing source/destination paths required")
     root, destination = Path(os.path.abspath(run_root)), Path(os.path.abspath(out))
     source_resolved, out_resolved = root.resolve(), destination.resolve()
     if (source_resolved == out_resolved or source_resolved in out_resolved.parents

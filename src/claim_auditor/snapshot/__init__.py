@@ -15,6 +15,21 @@ from .safeio import (
 )
 
 
+def unread_entry_digest(reason: str, size: int, object_id: str | None = None) -> str:
+    """Marker digest for an excluded entry whose bytes were never read (see SnapshotEntry)."""
+    return sha256(canonical_json({"unread": reason, "size": size, "object_id": object_id}))
+
+
+def require_snapshot_root(root: Path) -> None:
+    """A supplied snapshot root without a top manifest is an input error (2), not integrity."""
+    try:
+        (Path(root) / "manifest.json").lstat()
+    except (FileNotFoundError, NotADirectoryError) as error:
+        raise AuditError("snapshot_not_found", str(root), 2) from error
+    except OSError:
+        pass  # Other access failures are classified by load_snapshot's integrity checks.
+
+
 def _manifest_digest(value: dict[str, object]) -> str:
     return sha256(canonical_json({key: item for key, item in value.items() if key != "manifest_digest"}))
 
@@ -104,6 +119,14 @@ def create_fixture_snapshot(source: Path, out: Path) -> Snapshot:
                     raise SnapshotError("unsupported_fixture_file_type")
                 if len(entries) >= MAX_ENTRIES:
                     raise SnapshotError("entry_limit")
+                if info.st_size > MAX_FILE_BYTES:
+                    # Over-cap source is unsupported scope, never read; the snapshot continues.
+                    gaps.append(ScopeGap(path=relative, reason="file_byte_limit"))
+                    entries.append(SnapshotEntry(
+                        path=relative, sha256=unread_entry_digest("file_byte_limit", info.st_size), size=info.st_size,
+                        mode="100755" if info.st_mode & 0o111 else "100644", status="excluded",
+                    ))
+                    continue
                 data = read_ordinary(source_absolute, relative)
                 error = text_error(data, relative.casefold().endswith("readme.md"))
                 if error is None:

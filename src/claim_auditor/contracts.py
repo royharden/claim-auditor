@@ -76,6 +76,14 @@ class Limits(WireModel):
 
 
 class SnapshotEntry(WireModel):
+    """One tracked path. `sha256` is the raw-bytes digest whenever the bytes were read.
+
+    An entry excluded with gap reason `file_byte_limit` is never read beyond the per-file cap,
+    so its `sha256` is instead the unread-marker digest from `snapshot.unread_entry_digest`
+    (canonical JSON of reason, declared size and Git object ID or null), never a content digest.
+    `size` is then the declared full size. Excluded entries never support evidence or absence.
+    """
+
     path: str
     sha256: Digest
     size: int = Field(ge=0)
@@ -572,6 +580,14 @@ class AuditError(Exception):
         self.detail = detail
         self.exit_code = exit_code
         super().__init__(f"{reason}: {detail}")
+
+
+# Sole run-state -> CLI exit table (audit and verify-report). Non-terminal crashed states are incomplete.
+RUN_STATE_EXIT = {"complete": 0, "failed_input": 2, "incomplete": 3, "failed_integrity": 4}
+
+
+def exit_for_state(state: str) -> int:
+    return RUN_STATE_EXIT.get(state, 3)
 
 
 class ProviderCaps(WireModel):

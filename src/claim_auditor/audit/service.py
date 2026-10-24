@@ -72,7 +72,7 @@ def audit_snapshot(
     from ..index import build_index, resolve
     from ..inventory import extract_inventory
     from ..report import write_reports
-    from ..snapshot import load_snapshot, read_source
+    from ..snapshot import load_snapshot, read_source, require_snapshot_root
 
     require_no_live(mode)
     if mode not in {"rules", "replay"}:
@@ -89,6 +89,7 @@ def audit_snapshot(
     if prospective == source_root or source_root in prospective.parents:
         raise AuditError("output_inside_snapshot", "Run output must be separate from the frozen snapshot.")
     guard_tool_paths(source_root, destination)
+    require_snapshot_root(source_root)
     snapshot = load_snapshot(source_root)
     limits = Limits()
     started_clock = time.monotonic()

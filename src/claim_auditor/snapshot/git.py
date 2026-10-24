@@ -135,23 +135,33 @@ def _copy_objects(source: Path, destination: Path, algorithm: str) -> None:
         raise SnapshotError("object_store_changed_during_copy")
 
 
-def _batch(git: list[str], trusted: Path, env: dict[str, str], oid: str, cap: int, kind: str) -> bytes:
+def _batch_bounded(git: list[str], trusted: Path, env: dict[str, str], oid: str, cap: int, kind: str) -> tuple[bytes | None, int]:
+    """Return (payload, size), or (None, size) without reading the object when size exceeds cap."""
     checked = _run(git + ["cat-file", "--batch-check"], trusted, env, 256, (oid + "\n").encode("ascii"))
     parts = checked.rstrip(b"\n").split(b" ")
     if len(parts) != 3 or parts[0].decode("ascii") != oid or parts[1].decode("ascii") != kind:
         raise SnapshotError("unexpected_git_object_type")
     size = int(parts[2])
-    if size < 0 or size > cap:
+    if size < 0:
         raise SnapshotError("decompressed_object_byte_limit")
+    if size > cap:
+        return None, size
     raw = _run(git + ["cat-file", "--batch"], trusted, env, size + 256, (oid + "\n").encode("ascii"))
     header, separator, payload = raw.partition(b"\n")
     if not separator or header != checked.rstrip(b"\n") or len(payload) != size + 1 or not payload.endswith(b"\n"):
         raise SnapshotError("malformed_git_batch_output")
-    return payload[:-1]
+    return payload[:-1], size
+
+
+def _batch(git: list[str], trusted: Path, env: dict[str, str], oid: str, cap: int, kind: str) -> bytes:
+    payload, _ = _batch_bounded(git, trusted, env, oid, cap, kind)
+    if payload is None:
+        raise SnapshotError("decompressed_object_byte_limit")
+    return payload
 
 
 def acquire_git(repo: Path, commit: str, out: Path) -> Snapshot:
-    from . import _make_snapshot, _publish, _write_source
+    from . import _make_snapshot, _publish, _write_source, unread_entry_digest
     if not re.fullmatch(r"[a-f0-9]{40}|[a-f0-9]{64}", commit):
         raise AuditError("git_commit", "a full lowercase object ID is required", 2)
     algorithm = "sha1" if len(commit) == 40 else "sha256"
@@ -223,7 +233,13 @@ def acquire_git(repo: Path, commit: str, out: Path) -> Snapshot:
                     continue
                 if mode not in {"100644", "100755"} or kind != "blob":
                     raise SnapshotError("symlink_or_unsupported_tree_mode")
-                raw = _batch(git, trusted, env, oid, MAX_FILE_BYTES, "blob")
+                raw, size = _batch_bounded(git, trusted, env, oid, MAX_FILE_BYTES, "blob")
+                if raw is None:
+                    # Over-cap blob is unsupported scope, never read; the snapshot continues.
+                    gaps.append(ScopeGap(path=relative, reason="file_byte_limit"))
+                    entries.append(SnapshotEntry(path=relative, sha256=unread_entry_digest("file_byte_limit", size, oid),
+                                                 size=size, mode=mode, status="excluded"))
+                    continue
                 error = text_error(raw, relative.casefold().endswith("readme.md"))
                 if error is None:
                     total += len(raw)
