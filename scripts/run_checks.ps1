@@ -15,7 +15,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 # Import tests as a package so their relative support imports work.
 Push-Location $ProjectRoot
 try {
-    & $Python -m unittest discover -s (Join-Path $ProjectRoot 'tests') -t $ProjectRoot -p $Pattern -v
+    & $Python -I -m unittest discover -s (Join-Path $ProjectRoot 'tests') -t $ProjectRoot -p $Pattern -v
     $CheckExit = $LASTEXITCODE
 } finally {
     Pop-Location

@@ -9,4 +9,4 @@ if [ ! -x "$python_bin" ]; then
 fi
 "$python_bin" -I -c 'import sys; assert sys.version_info[:2] == (3,12), "Python 3.12 required"'
 cd "$project_root"
-exec "$python_bin" -m unittest discover -s "$project_root/tests" -t "$project_root" -p "$pattern" -v
+exec "$python_bin" -I -m unittest discover -s "$project_root/tests" -t "$project_root" -p "$pattern" -v
