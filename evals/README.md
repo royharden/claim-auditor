@@ -34,4 +34,4 @@ are included. Start a container only after the assigned M2 agent-ports claim/che
 passes. Use the printed labels, the assigned `m2-r03-rv2-*` name, no published ports,
 `--network none`, a read-only root and an M2-owned output bind mount at `/results`.
 Preserve the stopped container and artifacts. A Dockerfile alone is not execution
-evidence; the R03 ledger conflict currently blocks that run.
+evidence; record actual container commands, image identity and results separately.
