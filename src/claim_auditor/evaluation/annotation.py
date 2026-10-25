@@ -234,8 +234,8 @@ def prepare_source_annotation(
                "family_id": family_id, "source_manifest_digest": snapshot.manifest_digest,
                "snapshot": snapshot, "raw_inventory": inventory, "source_entries": snapshot.entries,
                "evidence_source_scope_gaps": snapshot.exclusions,
-               "status": "awaiting_source_first_manual_review", "candidate_extractor_invoked": False,
-               "candidate_findings_used": False, "human_review_performed": False, "gold_created": False,
+               "status": "awaiting_source_first_manual_review", "candidate_extractor_loaded": False,
+               "candidate_findings_loaded": False, "human_review_performed": False, "gold_created": False,
                "instructions": [
                    "Read every original README byte, including code/HTML/headings and unsupported/unparsed blocks.",
                    "Select atoms by explicit byte ranges; retain containing parent context and all qualifiers/negation.",
