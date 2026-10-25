@@ -60,6 +60,11 @@ def bounded_scandir(path: Path, cap: int) -> list[os.DirEntry[str]]:
 
 def _identity(info: os.stat_result) -> tuple[int, int, int, int, int]:
     # File type only: Windows lstat() synthesizes execute bits from the extension; fstat() does not.
+    if stat.S_ISDIR(info.st_mode):
+        # Sibling creation changes an ancestor's size/mtime without replacing it.
+        # Directory handles/no-follow checks pin the path; compare its identity,
+        # while retaining content metadata checks for ordinary files below.
+        return info.st_dev, info.st_ino, 0, 0, stat.S_IFMT(info.st_mode)
     return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, stat.S_IFMT(info.st_mode)
 
 
@@ -189,7 +194,9 @@ def read_ordinary(root: Path, relative: str, cap: int = MAX_FILE_BYTES) -> bytes
     if _identity(target.lstat()) != _identity(before):
         raise SnapshotError("file_replaced_during_read")
     for ancestor, identity in ancestors:
-        if _identity(ancestor.lstat()) != identity:
+        after = ancestor.lstat()
+        _ordinary(after, True)
+        if _identity(after) != identity:
             raise SnapshotError("ancestor_changed_during_read")
     return data
 
