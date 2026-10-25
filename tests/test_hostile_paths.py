@@ -97,7 +97,9 @@ class HostilePathTests(unittest.TestCase):
                 if path == root:
                     root_observations += 1
                     if root_observations >= 2:
-                        return changed(info, st_mtime_ns=info.st_mtime_ns + 1)
+                        # Object replacement changes inode, whereas creating an
+                        # unrelated sibling may legitimately change only mtime.
+                        return changed(info, st_ino=info.st_ino + 1)
                 return info
 
             with patch.object(Path, "lstat", autospec=True, side_effect=observe):

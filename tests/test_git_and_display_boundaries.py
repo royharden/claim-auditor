@@ -101,7 +101,7 @@ class TrustedGitResolutionTests(unittest.TestCase):
         with patch.object(Path, "cwd", return_value=cwd):
             path = os.pathsep.join([str(cwd), relative, str(wrappers), str(trusted)])
             with patch.dict(os.environ, {"PATH": path}):
-                self.assertEqual(_trusted_git(), (trusted / self.name).absolute())
+                self.assertEqual(_trusted_git(), (trusted / self.name).resolve())
             for only in ([str(cwd)], [relative], [str(wrappers)], [str(cwd), str(wrappers)]):
                 with self.subTest(path=only), patch.dict(os.environ, {"PATH": os.pathsep.join(only)}):
                     with self.assertRaises(SnapshotError) as caught:
