@@ -60,21 +60,32 @@ def _git_env() -> dict[str, str]:
     return env
 
 
-def _git() -> str:
-    # Resolve from absolute host PATH entries, never the target/current directory.
+def _git(target: Path) -> str:
+    # Both sides must be physical identities: a PATH junction or Windows 8.3
+    # spelling must not disguise an executable inside the untrusted target.
+    target_identity = target.resolve(strict=True)
+    cwd = Path.cwd().resolve(strict=True)
     name = "git.exe" if os.name == "nt" else "git"
     for entry in os.get_exec_path():
         directory = Path(entry)
         if not directory.is_absolute():
             continue
-        executable = directory / name
-        if executable.is_file() and executable.resolve().parent != Path.cwd().resolve():
-            return str(executable.resolve())
+        try:
+            executable = (directory / name).resolve(strict=True)
+        except (OSError, RuntimeError):
+            continue
+        if (executable == target_identity or target_identity in executable.parents
+                or executable.parent == cwd):
+            continue
+        if os.name == "nt" and executable.suffix.casefold() != ".exe":
+            continue
+        if executable.is_file() and (os.name == "nt" or os.access(executable, os.X_OK)):
+            return str(executable)
     raise Refusal("trusted_git_unavailable")
 
 
-def _git_read(root: Path, *args: str) -> str:
-    result = subprocess.run([_git(), "-C", str(root), *args], env=_git_env(),
+def _git_read(root: Path, *args: str, target: Path) -> str:
+    result = subprocess.run([_git(target), "-C", str(root), *args], env=_git_env(),
                             capture_output=True, timeout=30, check=False)
     if result.returncode or len(result.stdout) > 4096:
         raise Refusal("git_identity_refused")
@@ -92,7 +103,7 @@ def fetch(repository: str, target_sha: str, out: Path) -> None:
     template.mkdir()
     store = out / ".git"
     env = _git_env()
-    command = [_git(), "init", "--bare", "--object-format=sha1", f"--template={template}", str(store)]
+    command = [_git(out), "init", "--bare", "--object-format=sha1", f"--template={template}", str(store)]
     result = subprocess.run(command, env=env, cwd=out.parent, capture_output=True, timeout=30)
     if result.returncode:
         raise Refusal("git_store_setup_failed")
@@ -102,7 +113,7 @@ def fetch(repository: str, target_sha: str, out: Path) -> None:
         header = base64.b64encode(("x-access-token:" + token).encode()).decode("ascii")
         env.update(GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="http.https://github.com/.extraheader",
                    GIT_CONFIG_VALUE_0="AUTHORIZATION: basic " + header)
-    args = [_git(), f"--git-dir={store}", "-c", "credential.helper=", "-c", "gc.auto=0",
+    args = [_git(out), f"--git-dir={store}", "-c", "credential.helper=", "-c", "gc.auto=0",
             "-c", "fetch.recurseSubmodules=false", "fetch", "--quiet", "--no-tags",
             "--no-recurse-submodules", "--no-write-fetch-head",
             f"https://github.com/{repository}.git", f"{target_sha}:refs/heads/audited"]
@@ -125,11 +136,11 @@ def fetch(repository: str, target_sha: str, out: Path) -> None:
             if process.poll() is None:
                 process.kill()
                 process.wait()
-    result = subprocess.run([_git(), f"--git-dir={store}", "symbolic-ref", "HEAD", "refs/heads/audited"],
+    result = subprocess.run([_git(out), f"--git-dir={store}", "symbolic-ref", "HEAD", "refs/heads/audited"],
                             cwd=out.parent, env=_git_env(), capture_output=True, timeout=30)
-    if result.returncode or _git_read(out, "rev-parse", "HEAD") != target_sha:
+    if result.returncode or _git_read(out, "rev-parse", "HEAD", target=out) != target_sha:
         raise Refusal("fetched_target_identity_mismatch", 4)
-    if _git_read(out, "rev-parse", "--is-shallow-repository") != "false":
+    if _git_read(out, "rev-parse", "--is-shallow-repository", target=out) != "false":
         raise Refusal("complete_nonshallow_store_required")
 
 
@@ -146,13 +157,13 @@ def audit(args: argparse.Namespace) -> None:
         _separate(root, args.out)
     if args.out.exists() or args.out.is_symlink():
         raise Refusal("fresh_output_required")
-    if _git_read(args.tool_root, "rev-parse", "HEAD") != args.tool_revision:
+    if _git_read(args.tool_root, "rev-parse", "HEAD", target=args.target_repo) != args.tool_revision:
         raise Refusal("trusted_tool_revision_mismatch", 4)
     if _git_read(args.tool_root, "status", "--porcelain", "--untracked-files=all", "--",
-                 "src/claim_auditor", "pyproject.toml", "uv.lock"):
+                 "src/claim_auditor", "pyproject.toml", "uv.lock", target=args.target_repo):
         raise Refusal("trusted_tool_source_dirty", 4)
     ignored = _git_read(args.tool_root, "ls-files", "--others", "--ignored", "--exclude-standard",
-                        "--", ":(glob)src/claim_auditor/**/*.py")
+                        "--", ":(glob)src/claim_auditor/**/*.py", target=args.target_repo)
     if any(path.endswith(".py") for path in ignored.splitlines()):
         raise Refusal("untracked_trusted_python_source", 4)
     # Do not run even rev-parse against target-controlled repository config.

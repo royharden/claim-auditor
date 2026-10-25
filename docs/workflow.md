@@ -43,6 +43,15 @@ commit must agree. The workflow's own fresh fetch also checks its fetched HEAD.
 Tool, target and output directories must be physically disjoint; shallow stores,
 bad identities, links and reused output refuse before completion.
 
+Before every helper Git launch, the executable is resolved from an absolute PATH
+entry and compared with the physical target directory. Executables inside the
+target, including its `.git` store, are excluded even through PATH junctions or
+Windows 8.3 aliases. The fetch helper applies the same check against its entire
+new output directory for setup, transfer and identity reads. Installed Git outside
+the target remains eligible; no eligible executable is a setup refusal. This
+executable check occurs before the canonical target snapshot admission and does
+not read target Git configuration.
+
 ## Local helper interface
 
 Run the helper using the trusted tool environment's Python with `-I`:
