@@ -1,5 +1,6 @@
 """Future tool/target separation probes; no tool hashes or audits observed now."""
 
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -57,20 +58,61 @@ class TrustedToolPathTests(unittest.TestCase):
         """what_bug_this_catches: lexical-only checks accepting a resolved tool alias or rejecting harmless prefix siblings."""
         alias = self.base / "alias-to-tool"
         resolve = Path.resolve
+        physical_target = resolve(self.tool / "target-snapshot")
 
         def resolved(path, *args, **kwargs):
             if path == alias:
-                return self.tool / "target-snapshot"
+                return physical_target
             return resolve(path, *args, **kwargs)
 
-        # This deterministic unit mapping asserts use of resolved identity. It
-        # does not pretend a real Windows junction/symlink was exercised.
+        # The mapped result must obey resolve's physical-identity contract too:
+        # Windows TEMP may use an 8.3 spelling while __file__ resolves long.
+        # This unit seam is separate from the real junction control below.
         with patch("claim_auditor.provenance.__file__", self.module_path), \
                 patch.object(Path, "resolve", new=resolved):
             with self.assertRaises(AuditError) as caught:
                 guard_tool_paths(alias, self.base / "ordinary-run")
             self.assertEqual(caught.exception.reason, "audit_path_inside_tool_source")
             guard_tool_paths(self.tool.with_name("claim_auditor-target"), self.base / "ordinary-run")
+
+    @unittest.skipUnless(os.name == "nt", "Windows junction regression")
+    def test_real_tool_junction_refuses_before_target_reads_observation_or_output(self):
+        """what_bug_this_catches: a physical tool alias escaping source/output exclusion despite lexical separation."""
+        import _winapi
+
+        self.tool.mkdir(parents=True)
+        alias = self.base / "actual-tool-junction"
+        _winapi.CreateJunction(str(self.tool), str(alias))
+        self.addCleanup(os.rmdir, alias)
+        self.assertTrue(alias.samefile(self.tool))
+        self.assertEqual(alias.resolve(), self.tool.resolve())
+        cases = [(alias, self.base / "ordinary-run"),
+                 (alias / "target-snapshot", self.base / "ordinary-run"),
+                 (self.base / "ordinary-snapshot", alias / "generated-run")]
+        with patch("claim_auditor.provenance.__file__", self.module_path), \
+                patch("claim_auditor.snapshot.load_snapshot") as load, \
+                patch("claim_auditor.audit.service.capture_run_context") as observe, \
+                patch.object(Path, "mkdir") as mkdir:
+            for source, out in cases:
+                with self.subTest(source=source, out=out), self.assertRaises(AuditError) as caught:
+                    audit_snapshot(source, "README.md", "rules", out)
+                self.assertEqual(caught.exception.reason, "audit_path_inside_tool_source")
+            load.assert_not_called()
+            observe.assert_not_called()
+            mkdir.assert_not_called()
+        self.assertFalse((self.tool / "generated-run").exists())
+        self.assertFalse((self.base / "ordinary-run").exists())
+
+    def test_real_sibling_with_tool_name_prefix_remains_separate(self):
+        """what_bug_this_catches: string-prefix containment rejecting a physically separate ordinary sibling."""
+        self.tool.mkdir(parents=True)
+        sibling = self.tool.with_name("claim_auditor-target")
+        sibling.mkdir()
+        self.assertNotEqual(sibling.resolve(), self.tool.resolve())
+        self.assertNotIn(self.tool.resolve(), sibling.resolve().parents)
+        with patch("claim_auditor.provenance.__file__", self.module_path):
+            guard_tool_paths(sibling, self.base / "ordinary-run")
+            guard_tool_paths(self.base / "ordinary-snapshot", sibling / "run")
 
     def test_changed_target_keeps_distinct_tool_identity_in_actual_future_closed_contexts(self):
         """what_bug_this_catches: hashing copied target files as tool code or confusing snapshot and tool identity."""
