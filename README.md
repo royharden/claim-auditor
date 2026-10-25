@@ -5,17 +5,19 @@ Python source snapshot. Findings retain original byte spans, cited evidence or
 replayable search coverage, and `verified`, `partial`, `missing` or `unknown`.
 Static declarations do not establish runtime behavior, security or performance.
 
-**Source construction — runtime unverified.** Dependencies are not installed or
-locked, no CLI/demo/tests/benchmark has run, and no provider has been called.
-Human-adjudicated comparison is unmeasured; **Action not yet run**. No public
-release, upload or deployment has occurred. CI/deployment scaffolding is deferred.
+**Local runtime validation in progress.** The offline owned demo, report verification,
+pinned export and exported-copy verification have run with Python 3.12.13,
+Pydantic 2.14.1 and markdown-it-py 4.2.0. See the bounded
+[local validation record](docs/local-validation.md) for results and open failures.
+Human-adjudicated comparison is unmeasured; **Action not yet run**. No provider
+call, public release, upload or deployment has occurred.
 
 ## Start with the owned demo
 
 After separately authorized runtime setup, use Python 3.12+ and a trusted installed
 tool outside the audited target. Resolve/review dependencies and generate
 `uv.lock` before activation; see the [operator quickstart](docs/quickstart.md).
-These are future commands, not execution evidence:
+These commands reproduce the local journey; use the validation record for actual evidence:
 
 ```console
 uv run claim-auditor demo --offline --out results-local/demo-001
@@ -65,8 +67,8 @@ receipts are supplied.
 
 ## What remains unperformed
 
-Snapshot-to-report/tamper execution, hostile-input containment, dependency and
-provider compatibility, actual human labels and independent heldout custody,
+Broad hostile-input containment, full dependency/platform conformance, provider
+compatibility, actual human labels and independent heldout custody,
 benchmark/live comparisons, cost/latency measurements and the exact-revision GitHub
 Action remain unverified or unmeasured. Independent product acceptance is pending.
 No quality, superiority or security guarantee follows from static source inspection.

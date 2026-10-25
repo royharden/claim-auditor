@@ -1,10 +1,11 @@
-# Intended operator quickstart
+# Operator quickstart
 
-**Source construction only. None of these commands has run.** Runtime, parser/
-transport containment and dependency compatibility remain unverified. Live/human
-comparison is not measured; no Action has run. These are future commands after the
-owner authorizes normal-mode setup and local execution. Dirty Mode does not permit
-running them, installing dependencies, starting services or creating CI scaffolding.
+**Local offline execution is now being validated in normal mode.** The owned demo,
+verification and pinned-export journey has run; the [local validation record](local-validation.md)
+distinguishes observed checks from open failures. Broad parser/transport containment
+and platform conformance remain incomplete. Live/human comparison is not measured;
+no Action has run. The remaining examples describe supported commands and require
+their own execution evidence.
 
 ## Local audit and integrity
 
@@ -65,7 +66,7 @@ only selected report artifacts and their included frozen source. It writes
 The source may be private. Local export grants no upload/publication permission
 and proves neither origin nor custody. It is not a generic archive or directory
 export. See [offline artifacts](offline-artifacts.md). No report or export has been
-generated during this source-construction phase.
+generated during the historical source-construction phase; current local execution is recorded separately.
 
 ## Closed paired fake/replay assembly
 
