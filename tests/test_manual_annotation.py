@@ -61,8 +61,8 @@ class ManualAnnotationTests(unittest.TestCase):
             extractor.assert_not_called()
         package = json.loads((out / "SOURCE.json").read_bytes())
         inventory = package["raw_inventory"]
-        self.assertFalse(package["candidate_extractor_loaded"])
-        self.assertFalse(package["candidate_findings_loaded"])
+        self.assertFalse(package["candidate_extractor_invoked"])
+        self.assertFalse(package["candidate_findings_used"])
         self.assertFalse(package["human_review_performed"])
         self.assertFalse(package["gold_created"])
         self.assertEqual(inventory["claims"], [])
