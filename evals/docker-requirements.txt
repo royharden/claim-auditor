@@ -1,8 +1,9 @@
-# Exact portable package versions from D8 uv.lock 1848424d534045778ae31e56ef2ae45f239c935add988b2d6dfab3aee90dd10f.
+# Exact portable package versions from D8 uv.lock abeb57c7df046f34f56e2048e201be95481d440078346108be4f4e4fe0515370.
 # Runtime and build closure. Reconcile this list if D8's accepted lock changes.
 annotated-types==0.8.0
 build==1.6.1
 colorama==0.4.6
+editables==0.6
 hatchling==1.32.4
 markdown-it-py==4.2.0
 mdurl==0.1.2
