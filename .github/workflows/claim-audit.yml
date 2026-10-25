@@ -15,7 +15,7 @@ concurrency:
   group: claim-audit-${{ github.ref }}
   cancel-in-progress: false
 env:
-  TOOL_REVISION: '442714247c3ba5e1615cb3b9487505b129fb8ed1'
+  TOOL_REVISION: 'c33655fb57dd6fbde310377173efb0e589ef534a'
   UV_NO_CONFIG: '1'
   GIT_LFS_SKIP_SMUDGE: '1'
 jobs:

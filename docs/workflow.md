@@ -16,7 +16,7 @@ installation is configured.
 
 The workflow glue is checked out at `github.workflow_sha`, a revision distinct
 from the requested target SHA. A second checkout installs the trusted tool at the
-literal full commit `442714247c3ba5e1615cb3b9487505b129fb8ed1`. Its own `uv.lock`
+literal full commit `c33655fb57dd6fbde310377173efb0e589ef534a`. Its own `uv.lock`
 and two-stage `scripts/bootstrap.sh` install CPython 3.12.13, the locked build
 backend, and exact runtime packages. The helper checks observed tool HEAD and
 the installed package's origin before running the CLI. Neither Python imports nor
@@ -120,7 +120,7 @@ immutable runner-image or supply-chain proof is claimed.
 Before a separately authorized real run, reconcile the literal tool revision to
 the final accepted source/lock, verify that revision is available in the eventual
 repository, reconcile the workflow revision, and obtain independent affected
-checks. The provisional local joined commit is not claimed to exist on GitHub.
+checks. The pinned local tool commit is not claimed to exist on GitHub.
 The self-audit must satisfy normal resource and sensitive-export limits; a refused
 self-audit is a failure to address, never a reason to drop evidence or bypass
 export protections.
