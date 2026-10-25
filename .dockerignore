@@ -1,0 +1,9 @@
+# Explicit allowlist prevents credential, Git, transcript, or lane content entering build context.
+**
+!pyproject.toml
+!README.md
+!LICENSE
+!src/
+!src/**
+!evals/
+!evals/**
