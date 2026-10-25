@@ -1,0 +1,213 @@
+# Local source only: Action not_run; publication/execution requires separate authority.
+name: Claim audit
+'on':
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Full lowercase SHA1 in this repository (blank means trigger SHA)
+        required: false
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: claim-audit-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  TOOL_REVISION: '442714247c3ba5e1615cb3b9487505b129fb8ed1'
+  UV_NO_CONFIG: '1'
+  GIT_LFS_SKIP_SMUDGE: '1'
+jobs:
+  self-audit:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Trusted workflow glue at immutable workflow revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4, reviewed 2026-10-25
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: workflow-source
+          fetch-depth: 0
+          persist-credentials: false
+          clean: false
+          submodules: false
+          lfs: false
+          set-safe-directory: false
+      - name: Immutable trusted tool (separate from target)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.TOOL_REVISION }}
+          path: trusted-tool
+          fetch-depth: 0
+          persist-credentials: false
+          clean: false
+          submodules: false
+          lfs: false
+          set-safe-directory: false
+      - name: Exact uv bootstrap, no cache restoration
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6 peeled commit
+        with:
+          version: '0.11.29'
+          checksum: '04f8b82f5d47f0512dcd32c67a4a6f16a0ea27c81537c338fd0ad6b23cebe829'
+          enable-cache: false
+          prune-cache: false
+          add-problem-matchers: false
+          working-directory: trusted-tool
+      - name: Install reviewed tool using frozen dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C "$GITHUB_WORKSPACE/trusted-tool" rev-parse HEAD)" = "$TOOL_REVISION"
+          sh "$GITHUB_WORKSPACE/trusted-tool/scripts/bootstrap.sh"
+      - name: Acquire complete target objects without checkout
+        shell: bash
+        env:
+          REPOSITORY: ${{ github.repository }}
+          TARGET_SHA: ${{ inputs.target_sha || github.sha }}
+          WORKFLOW_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          "$GITHUB_WORKSPACE/trusted-tool/.venv/bin/python" -I \
+            "$GITHUB_WORKSPACE/workflow-source/scripts/workflow_audit.py" fetch \
+            --repository "$REPOSITORY" --target-sha "$TARGET_SHA" \
+            --out "$RUNNER_TEMP/ca10-target"
+      - name: self audit, canonical verification and selected export
+        shell: bash
+        env:
+          REPOSITORY: ${{ github.repository }}
+          TARGET_SHA: ${{ inputs.target_sha || github.sha }}
+          WORKFLOW_REVISION: ${{ github.workflow_sha }}
+          TRIGGER_REVISION: ${{ github.sha }}
+          TRIGGER_KIND: ${{ github.event_name }}
+          ACTION_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          "$GITHUB_WORKSPACE/trusted-tool/.venv/bin/python" -I \
+            "$GITHUB_WORKSPACE/workflow-source/scripts/workflow_audit.py" audit \
+            --mode self --tool-root "$GITHUB_WORKSPACE/trusted-tool" \
+            --tool-revision "$TOOL_REVISION" --workflow-revision "$WORKFLOW_REVISION" \
+            --trigger-revision "$TRIGGER_REVISION" --trigger-kind "$TRIGGER_KIND" \
+            --repository "$REPOSITORY" --run-id "$ACTION_RUN_ID" \
+            --target-repo "$RUNNER_TEMP/ca10-target" --target-sha "$TARGET_SHA" \
+            --out "$RUNNER_TEMP/ca10-self"
+      - name: Upload only complete selected report and frozen evidence
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: claim-audit-self-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ca10-self/artifact/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+          overwrite: false
+      - name: Record platform artifact digest separately
+        shell: bash
+        env:
+          ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          [[ "$ARTIFACT_DIGEST" =~ ^[a-f0-9]{64}$ ]]
+          printf 'Uploaded artifact SHA256: %s\n' "$ARTIFACT_DIGEST" >> "$GITHUB_STEP_SUMMARY"
+  fixture-audit:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Trusted workflow glue at immutable workflow revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4, reviewed 2026-10-25
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: workflow-source
+          fetch-depth: 0
+          persist-credentials: false
+          clean: false
+          submodules: false
+          lfs: false
+          set-safe-directory: false
+      - name: Immutable trusted tool (separate from target)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.TOOL_REVISION }}
+          path: trusted-tool
+          fetch-depth: 0
+          persist-credentials: false
+          clean: false
+          submodules: false
+          lfs: false
+          set-safe-directory: false
+      - name: Exact uv bootstrap, no cache restoration
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6 peeled commit
+        with:
+          version: '0.11.29'
+          checksum: '04f8b82f5d47f0512dcd32c67a4a6f16a0ea27c81537c338fd0ad6b23cebe829'
+          enable-cache: false
+          prune-cache: false
+          add-problem-matchers: false
+          working-directory: trusted-tool
+      - name: Install reviewed tool using frozen dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C "$GITHUB_WORKSPACE/trusted-tool" rev-parse HEAD)" = "$TOOL_REVISION"
+          sh "$GITHUB_WORKSPACE/trusted-tool/scripts/bootstrap.sh"
+      - name: Acquire complete target objects without checkout
+        shell: bash
+        env:
+          REPOSITORY: ${{ github.repository }}
+          TARGET_SHA: ${{ inputs.target_sha || github.sha }}
+          WORKFLOW_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          "$GITHUB_WORKSPACE/trusted-tool/.venv/bin/python" -I \
+            "$GITHUB_WORKSPACE/workflow-source/scripts/workflow_audit.py" fetch \
+            --repository "$REPOSITORY" --target-sha "$TARGET_SHA" \
+            --out "$RUNNER_TEMP/ca10-target"
+      - name: fixture audit, canonical verification and selected export
+        shell: bash
+        env:
+          REPOSITORY: ${{ github.repository }}
+          TARGET_SHA: ${{ inputs.target_sha || github.sha }}
+          WORKFLOW_REVISION: ${{ github.workflow_sha }}
+          TRIGGER_REVISION: ${{ github.sha }}
+          TRIGGER_KIND: ${{ github.event_name }}
+          ACTION_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          "$GITHUB_WORKSPACE/trusted-tool/.venv/bin/python" -I \
+            "$GITHUB_WORKSPACE/workflow-source/scripts/workflow_audit.py" audit \
+            --mode fixture --tool-root "$GITHUB_WORKSPACE/trusted-tool" \
+            --tool-revision "$TOOL_REVISION" --workflow-revision "$WORKFLOW_REVISION" \
+            --trigger-revision "$TRIGGER_REVISION" --trigger-kind "$TRIGGER_KIND" \
+            --repository "$REPOSITORY" --run-id "$ACTION_RUN_ID" \
+            --target-repo "$RUNNER_TEMP/ca10-target" --target-sha "$TARGET_SHA" \
+            --out "$RUNNER_TEMP/ca10-fixture"
+      - name: Upload only complete selected report and frozen evidence
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: claim-audit-fixture-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ca10-fixture/artifact/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+          overwrite: false
+      - name: Record platform artifact digest separately
+        shell: bash
+        env:
+          ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          [[ "$ARTIFACT_DIGEST" =~ ^[a-f0-9]{64}$ ]]
+          printf 'Uploaded artifact SHA256: %s\n' "$ARTIFACT_DIGEST" >> "$GITHUB_STEP_SUMMARY"
