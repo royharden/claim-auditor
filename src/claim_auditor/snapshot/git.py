@@ -150,9 +150,18 @@ def _trusted_git() -> Path:
                 continue
         except OSError:
             continue
-        candidate = Path(entry) / name
+        try:
+            # Return the physical executable identity used by acquire_git's target
+            # containment check. A PATH junction must not disguise target code.
+            candidate = (Path(entry) / name).resolve(strict=True)
+        except (OSError, RuntimeError):
+            continue
+        if candidate.parent == cwd:
+            continue
+        if os.name == "nt" and candidate.suffix.casefold() != ".exe":
+            continue
         if candidate.is_file() and (os.name == "nt" or os.access(candidate, os.X_OK)):
-            return candidate.absolute()
+            return candidate
     raise SnapshotError("trusted_git_binary_unavailable")
 
 
@@ -231,6 +240,12 @@ def acquire_git(repo: Path, commit: str, out: Path) -> Snapshot:
         if repo == output_absolute or repo in output_absolute.parents:
             raise SnapshotError("output_must_be_outside_target_repository")
         _ordinary_directory(repo)
+        # Compare physical identities on both sides, including Windows 8.3 path
+        # spellings. Ordinary/no-follow source validation still uses the input path.
+        target_identity = repo.resolve(strict=True)
+        output_identity = output_absolute.resolve()
+        if target_identity == output_identity or target_identity in output_identity.parents:
+            raise SnapshotError("output_must_be_outside_target_repository")
         store = repo / ".git"
         _ordinary_directory(store)  # Reject .git files/worktree indirection and bare input.
         if os.path.lexists(store / "shallow") or os.path.lexists(store / "commondir"):
@@ -242,7 +257,7 @@ def acquire_git(repo: Path, commit: str, out: Path) -> Snapshot:
         if re.search(rb"promisor|partialclone|worktreeconfig", config, flags=re.IGNORECASE):
             raise SnapshotError("partial_or_promisor_store_not_supported")
         executable_path = _trusted_git()
-        if repo == executable_path or repo in executable_path.parents:
+        if target_identity == executable_path or target_identity in executable_path.parents:
             raise SnapshotError("git_binary_must_not_come_from_target")
         env = _environment()
         deadline = time.monotonic() + 120
