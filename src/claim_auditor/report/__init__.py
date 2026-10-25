@@ -15,10 +15,14 @@ from claim_auditor.report.demo import create_demo_source
 
 
 def _display(text: str) -> str:
-    # Display only: escape controls, then make line-leading `::` workflow-command syntax inert.
+    # Display only: escape controls and make both Actions command syntaxes inert.
     # Stored quotes, JSON artifacts and digests keep the exact bytes.
     # Any leading Unicode whitespace counts: the Actions runner trims it before matching `::`.
-    return re.sub(r"(?m)^([^\S\n]*)::", r"\1\\::", safe_display(text))
+    # The legacy runner parser searches for ##[ anywhere, including inside JSON
+    # and fences. Prefixing a backslash leaves that substring executable, so
+    # break the delimiter itself. Raw artifacts and citation bytes stay intact.
+    displayed = safe_display(text).replace("##[", "#\\#[")
+    return re.sub(r"(?m)^([^\S\n]*)::", r"\1\\::", displayed)
 
 
 def _fenced(text: str) -> str:
