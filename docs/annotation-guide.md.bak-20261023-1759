@@ -1,0 +1,37 @@
+# Human annotation guide
+
+No human annotation has occurred in this construction run. Agent-written examples or labels are dev proposals only.
+
+Annotate every atomic README claim, including unsupported kinds and omissions by the candidate extractor. Record the exact frozen source identity, original UTF-8 byte span and quote, parent sentence, structured predicates, negation, conditions, quantities and referents. Do not infer that an example or import statement asserts every behavior it demonstrates. Preserve an unsplittable compound as requiring decomposition rather than inventing independent qualifiers.
+
+Use the precise scoped taxonomy. A declaration claim asks whether syntax declares that symbol, not whether it imports or works. An environment reference is not effective configuration. A literal retry decorator argument is not reliable retry behavior. A positive static proxy cannot verify a stronger runtime statement.
+
+Choose `verified` only when every supported predicate is established with reopenable evidence. Choose `missing` only with a complete bounded absence proof or decisive contrary literal. Choose `partial` only for real supported and unresolved/contradicted predicates; mere subject existence does not make an entirely wrong literal partly correct. Choose `unknown` for unsupported semantics, ambiguous binding, incomplete scope or broken evidence. Negation reverses predicate truth before verdict reduction.
+
+Each `GoldAtom` retains expected verdict/relation, answerability, supported/unresolved/accused predicate IDs, evidence rationale, real annotator identity/type, adjudication date and all disagreements. Accused IDs identify absent/inconsistent predicates; unknown unresolved predicates do not belong in that list. Human rows require actual human evidence review. A single-human protocol does not establish inter-human agreement. Preliminary agent proposals must retain `annotator_type: agent`; never relabel them as human without the actual review.
+
+The independent curator controls heldout source and labels outside the product tree. Before tuning, record rights, original revision, ancestry/family identity, seal date/digests and real access restrictions. A generator/template/ancestor defines one family even after renaming. Blind family aliases must not reveal expected outcomes. Previously exposed source is dev material; later sealing cannot make it unseen. The implementer must not read heldout source/labels to create examples or debug the scorer.
+
+Freeze matcher, taxonomy, packet, provider/model identities, prompts, thresholds, caps and statistical method on dev before heldout access. Run source-only inference first, close it, then expose gold to the scorer. Preserve disagreements and failed releases. Retire disclosed or failed heldout families to dev before further tuning.
+
+## Append-only annotation source
+
+`claim_auditor.evaluation.rulings` supplies a local operator service; its execution is unverified. Its central wire type is `contracts.AnnotationRuling`, wrapping an existing `GoldAtom`. That reused type name does not make an agent proposal gold. No supplied fixture contains a prefilled `GoldAtom` or human ruling.
+
+Use one ledger per frozen source manifest. Choose a stable annotation subject ID (`atom.gold_id`) and retain it across review revisions. The ruling binds that source manifest, the canonical full Claim digest and the exact evidence-bundle byte digest. `ruling_id` is `stable_id("ruling", fields)` over every other field, using the canonical JSON implementation in `contracts.py`. Dates must be aware and not in the future; a human adjudication date cannot follow the recording date. The evidence bundle includes the evidence and coverage the annotator actually reviewed. A digest identifies those bytes; only reopening the source and the sole citation resolver can establish integrity.
+
+`make_ruling` constructs a judgment without writing it. `append_ruling` and `import_rulings` validate it and append only new records under an exclusive writer lock. A human row requires an actual human review, nonblank `human_action_id`, actual adjudication date and explicit `human_confirmation=True` at the write/import boundary. The flag is an operator attestation, not authentication or proof that a human acted. Automated callers must never set it on a person's behalf. An agent row cannot carry a human action ID.
+
+A revision must name that annotator's latest `supersedes_ruling_id`; existing disagreement text must be retained. Different annotators remain separate rows, including when they disagree. Exact import repetition is a no-op. Changed source/claim/evidence bytes are a conflict, never an implicit revision: retain the old ledger and prepare fresh review in a new ledger. Source changes never inherit a human judgment merely because prose looks similar.
+
+`current_rulings` requires the current manifest digest and maps keyed by exact claim ID, computed independently from reopened Claim/evidence bytes. It returns each annotator's latest judgment; it does not choose a consensus, adjudicate or emit final gold. The independent curator must resolve disagreements after actual review and explicitly admit the scorer input under the real evaluation protocol. Do not use the ledger's own digest values as proof of current bytes.
+
+Bounds: 5,000 rows, 10 MiB total, 256 KiB per row. A busy lock fails immediately; do not steal a lock based on age. Partial/unterminated appends fail closed. Preserve crash artifacts and recover into a new reviewed file; the service never truncates history. Append/import prevalidate a batch, but a machine crash may leave a partial batch or tail. This is an operator-owned ordinary-directory tool, not tamper-proof multi-user storage; file permissions, actual backups, process races and filesystem crash behavior need later validation.
+
+## DEV staging boundary
+
+The twelve authored DEV families and all 120 statements remain disclosed and unannotated. `evaluation.custody` contains future local staging functions, not a heldout-custody service. Staging accepts only `DEV_ONLY` provenance and an actual operator-supplied access/rights attestation. Heldout/admission/custody-certification claims are refused. No access receipt has been populated or staged in this construction work.
+
+An opaque alias changes a directory label, not what the author has seen. Select aliases without outcome/kind/family words and retain the alias/provenance mapping in the private control tree. Export only the source snapshot to inference; never include provenance, review prompts, coverage-map, access receipts, rulings, annotation rationale or the separate label tree. A known-filename filter and an operator declaration reduce accidental mixing but cannot prove the absence of hidden labels or semantic leakage. The external curator remains responsible for real separation and independent heldout source.
+
+DEV label staging reopens exact claim/evidence bytes and uses the sole citation/coverage resolver; it preserves all judgment history and does not certify semantic accuracy, actual human work, consensus or scorer admission. A digest-only seal detects changes against a separately retained expected digest; it does not configure ACLs, establish rights or make an exposed family blind. The concrete staging APIs and required attestation fields are in [labeling-package.md](labeling-package.md).

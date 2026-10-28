@@ -1,0 +1,76 @@
+"""Future live factory source with explicit credential injection, no key lookup."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Mapping
+
+from ..contracts import AuditError, LiveExperimentConfig, canonical_json
+from .http_json import HTTPJSONTransport, validate_endpoint
+from .live import AnthropicAdapter, OpenAICompatibleAdapter
+
+
+@dataclass(frozen=True, repr=False)
+class LiveOwnerContext:
+    """In-memory trusted caller input; never loaded from a packet/config/ENV."""
+
+    credential_headers: Mapping[str, Mapping[str, str]]
+    activated: bool = False
+
+
+def validate_live_config(config: LiveExperimentConfig) -> LiveExperimentConfig:
+    """Pure owner configuration inspection: no target bytes, clients or credentials."""
+    config = LiveExperimentConfig.model_validate_json(canonical_json(config))
+    for role, authorization in config.authorizations.items():
+        if not authorization.enabled:
+            raise AuditError("live_not_authorized", "Both future owner role authorizations must be explicitly enabled.")
+        try:
+            expires = datetime.fromisoformat(authorization.expires_at.replace("Z", "+00:00"))
+            if expires.tzinfo is None or expires <= datetime.now(timezone.utc):
+                raise ValueError("expired")
+        except ValueError as exc:
+            raise AuditError("live_not_authorized", "Current aware owner expiry required for both roles.") from exc
+        for endpoint in config.allowed_endpoints[role]:
+            validate_endpoint(endpoint)
+        route = validate_endpoint(authorization.endpoint)[2]
+        expected_route = "/v1/messages" if authorization.provider == "anthropic" else "/v1/chat/completions"
+        if route != expected_route:
+            raise AuditError("provider_identity_mismatch", "Owner provider identity and route differ.")
+    return config
+
+
+def run_configured_live(
+    protocol_path: Path, snapshot_root: Path, out: Path, *, protocol_digest: str,
+    config: LiveExperimentConfig, credential_headers: Mapping[str, Mapping[str, str]] | None = None,
+    owner_activation: bool = False,
+) -> dict:
+    """Inject owner credentials into built-in source adapters for future activation.
+
+    Default refusal precedes target/protocol file reads and any transport factory.
+    Nothing is instantiated/called during source construction. A future trusted
+    operator controls credential acquisition independently; no file/env/packet
+    supplies credentials, adapter class names or an arbitrary import destination.
+    """
+    roles = {"extraction", "single_pass"}
+    if (not owner_activation or credential_headers is None
+            or set(credential_headers) != roles or any(not credential_headers[role] for role in roles)):
+        raise AuditError("live_not_authorized", "Future explicit owner activation and injected credentials for both roles required.")
+    config = validate_live_config(config)
+    adapters = {}
+    transports = {}
+    for role in sorted(roles):
+        authorization = config.authorizations[role]
+        adapters[role] = AnthropicAdapter() if authorization.provider == "anthropic" else OpenAICompatibleAdapter()
+        transports[role] = HTTPJSONTransport(authorization=authorization, owner_activation=True,
+                                              allowed_endpoints=tuple(config.allowed_endpoints[role]),
+                                              credential_headers=credential_headers[role])
+    # The consumer retains original external LOCK pin/rights/custody/code checks,
+    # packet construction and the single producer/accounting/artifact authority.
+    from ..evaluation import run_live_experiment
+
+    return run_live_experiment(protocol_path, snapshot_root, out, protocol_digest=protocol_digest,
+                               caps=config.caps, system_prompts=config.system_prompts,
+                               models=config.models, authorizations=config.authorizations,
+                               transports=transports, adapters=adapters)

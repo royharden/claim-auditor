@@ -1,0 +1,138 @@
+"""Packet-only deterministic support; no full-index query or absence privilege."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from claim_auditor.audit.policy import decide_finding
+from claim_auditor.citations import validate_span
+from claim_auditor.contracts import (
+    AuditError, Claim, EvaluationPacket, Evidence, Inventory, Limits, PredicateResult, PredictionRow,
+    ProviderProposal, Snapshot, Span, canonical_json, sha256, stable_id,
+)
+from claim_auditor.inventory import extract_inventory
+from claim_auditor.evaluation.packet_facts import PacketFacts, resolve_packet_predicate
+
+
+def validate_packet(packet: EvaluationPacket, snapshot: Snapshot, root: Path) -> None:
+    """Reopen admitted bytes solely for integrity, never hidden retrieval."""
+    fields = packet.model_dump(mode="json", exclude={"packet_digest"})
+    if sha256(canonical_json(fields)) != packet.packet_digest:
+        raise AuditError("packet_integrity_failure", "packet digest differs", 4)
+    if (packet.snapshot_id, packet.snapshot_manifest_digest) != (snapshot.snapshot_id, snapshot.manifest_digest):
+        raise AuditError("packet_snapshot_mismatch", "packet belongs to another snapshot", 4)
+    if canonical_json(packet.scope_entries) != canonical_json(snapshot.entries):
+        raise AuditError("packet_scope_mismatch", "packet source inventory differs", 4)
+    if packet.absence_certificates:
+        raise AuditError("packet_absence_privilege", "packet arms cannot acquire absence certificates", 4)
+    raw = packet.readme_text.encode("utf-8")
+    if len(raw) > Limits().max_readme_bytes:
+        raise AuditError("input_too_large", "mandatory README exceeds admitted cap")
+    if len(canonical_json({"entries": packet.scope_entries, "exclusions": packet.exclusions})) > 8 * 1024:
+        raise AuditError("input_too_large", "mandatory scope metadata exceeds admitted cap")
+    if sha256(raw) != packet.readme_sha256:
+        raise AuditError("packet_integrity_failure", "README digest differs", 4)
+    validate_span(snapshot, root, _span(packet, packet.readme_path, packet.readme_sha256, 0, raw))
+    if len(packet.excerpts) > 5000 or sum(len(e.quote.encode("utf-8")) for e in packet.excerpts) > 48 * 1024:
+        raise AuditError("input_too_large", "packet evidence exceeds admitted bound")
+    for excerpt in packet.excerpts:
+        quote = excerpt.quote.encode("utf-8")
+        if len(quote) > 1024 or excerpt.end_byte - excerpt.start_byte != len(quote):
+            raise AuditError("packet_integrity_failure", "excerpt bounds differ", 4)
+        # The sole resolver calculates/checks line coordinates against frozen bytes.
+        # These bytes are not exposed to inference beyond the admitted interval.
+        from claim_auditor.snapshot import read_source
+
+        frozen = read_source(snapshot, root, excerpt.path)
+        span = _span(packet, excerpt.path, excerpt.file_sha256, excerpt.start_byte, quote, frozen)
+        validate_span(snapshot, root, span)
+
+
+def _span(packet: EvaluationPacket, path: str, digest: str, start: int, quote: bytes,
+          frozen: bytes | None = None) -> Span:
+    raw = quote if frozen is None else frozen
+    end = start + len(quote)
+    from claim_auditor.inventory.raw import RawDocument
+
+    first_line, last_line = RawDocument.decode(raw).line_bounds(start, end)
+    return Span(snapshot_id=packet.snapshot_id, path=path, file_sha256=digest,
+                start_byte=start, end_byte=end, start_line=first_line, end_line=last_line,
+                quote=quote.decode("utf-8"), quote_sha256=sha256(quote))
+
+
+def packet_inventory(packet: EvaluationPacket, snapshot: Snapshot, root: Path) -> Inventory:
+    """The existing inventory reads only the integrity-checked packet README."""
+    inventory = extract_inventory(snapshot, root, packet.readme_path)
+    if inventory.readme_sha256 != packet.readme_sha256:
+        raise AuditError("packet_integrity_failure", "candidate inventory read a different README", 4)
+    return inventory
+
+
+def failure_row(snapshot_id: str, arm: str, status: str, reason: str,
+                ordinal: int = 0) -> PredictionRow:
+    """One explicit pipeline row even when an arm produces no usable atoms."""
+    return PredictionRow(prediction_id=stable_id("paired-failure", snapshot_id, arm, ordinal, reason),
+                         family_id=snapshot_id, finding=None, accused_predicate_ids=[],
+                         status=status, error=reason)
+
+
+def validate_proposal_citations(packet: EvaluationPacket, snapshot: Snapshot, root: Path,
+                                proposals: list[ProviderProposal]) -> None:
+    """Reopen even unused model pointers; an invalid pointer is an integrity error."""
+    for proposal in proposals:
+        for span in proposal.evidence_spans:
+            if not any(span.path == excerpt.path and span.file_sha256 == excerpt.file_sha256
+                       and excerpt.start_byte <= span.start_byte < span.end_byte <= excerpt.end_byte
+                       and excerpt.quote.encode("utf-8")[span.start_byte - excerpt.start_byte:
+                                                         span.end_byte - excerpt.start_byte] == span.quote.encode("utf-8")
+                       for excerpt in packet.excerpts):
+                raise AuditError("unadmitted_evidence_span", "model pointer escapes packet", 4)
+            validate_span(snapshot, root, span)
+
+
+def resolve_packet_claims(packet: EvaluationPacket, snapshot: Snapshot, root: Path,
+                          claims: list[Claim], *,
+                          facts: PacketFacts,
+                          model_proposal: str | None = None) -> tuple[list[PredictionRow], list[Evidence]]:
+    """Use the shared admitted-packet fact authority for every paired treatment.
+
+    A model's semantics, confidence and proposed verdict never establish support.
+    Unknown semantics, incomplete context and absent facts remain explicit.
+    """
+    predictions: list[PredictionRow] = []
+    evidence: list[Evidence] = []
+    seen: set[str] = set()
+    for claim in claims:
+        if claim.claim_id in seen:
+            raise AuditError("invalid_output", "duplicate proposed claim identity")
+        seen.add(claim.claim_id)
+        if (claim.span.path, claim.span.file_sha256) != (packet.readme_path, packet.readme_sha256):
+            raise AuditError("unadmitted_claim_span", "proposal is not a packet README atom", 4)
+        validate_span(snapshot, root, claim.span)
+        # Parse each new exact span independently; never require prior discovery
+        # by the candidate inventory or pass its atoms into a provider request.
+        from claim_auditor.inventory import _predicate
+
+        fields, uncertainty = _predicate(claim.span.quote, {})
+        recognized = (len(claim.predicates) == 1 and claim.kind == fields["kind"]
+                      and claim.normalized == " ".join(claim.span.quote.split())
+                      and claim.uncertainty == uncertainty
+                      and claim.predicates[0].model_dump(mode="json", exclude={"predicate_id"}) == fields)
+        # A narrow quote may drop a surrounding "if", negation or example fence.
+        # Source-context validation uses raw whole assertion spans, never a list
+        # of rule-discovered claims. New exact-span atoms can establish facts.
+        assertion_context = (claim.span.start_byte, claim.span.end_byte) in facts.assertion_spans
+        results: list[PredicateResult] = []
+        for predicate in claim.predicates:
+            if recognized and assertion_context and not claim.uncertainty:
+                result = resolve_packet_predicate(packet, facts, snapshot, root, predicate)
+            else:
+                result = PredicateResult(predicate_id=predicate.predicate_id, state="unknown",
+                                         reason="packet_unvalidated_assertion_context", evidence=[], coverage=[], complete=False)
+            evidence.extend(result.evidence)
+            results.append(result)
+        finding = decide_finding(claim, results, citation_valid=True, model_proposal=model_proposal)
+        predictions.append(PredictionRow(prediction_id=claim.claim_id, family_id=snapshot.snapshot_id,
+                                         finding=finding, accused_predicate_ids=finding.accused_predicate_ids,
+                                         status="prediction", error=None))
+    return predictions, evidence

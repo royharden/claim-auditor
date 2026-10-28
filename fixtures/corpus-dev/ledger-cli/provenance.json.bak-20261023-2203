@@ -1,0 +1,43 @@
+{
+  "format": "corpus-dev-provenance/1",
+  "family_id": "dev-ledger-cli",
+  "designation": "DEV_ONLY",
+  "author_type": "agent",
+  "author_id": "0012_Codex_gpt-61-sol_D7",
+  "author_session": "01a16a95-430e-7d92-966e-e2ca8e221991",
+  "authored_on": "2026-10-23",
+  "origin": "Original source composed for claim-auditor DEV pilot; no external source acquisition.",
+  "rights_basis": "Original agent-authored project material; no third-party copied code; not a legal or independent rights-review receipt.",
+  "ancestry": {
+    "parent_family": null,
+    "mutation_of": null,
+    "structure": "flat-command-and-project-scripts",
+    "shared_elements": "Explicit README claim grammar only; all six authored by the same agent."
+  },
+  "source_root": "source",
+  "source_inventory": [
+    {
+      "path": "ledger.py",
+      "sha256": "bcc77f287f1fb2013308edce7efa859c0651ad632b4904da2a830c591d3adf18",
+      "size": 325
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "ac4c22f9a0d15afdf3cae02f8fe6bd2661e4b5cff92d1644130f5525f61c17c3",
+      "size": 158
+    },
+    {
+      "path": "README.md",
+      "sha256": "8271968af22533174174f88a3db2fa34d073e8733452157ccba77533894b229a",
+      "size": 445
+    }
+  ],
+  "inventory_digest_method": "sha256(sorted compact JSON source_inventory, ensure_ascii default)",
+  "source_inventory_digest": "2a3d727d463f0feb8779ce92958548f69064e964444a62e4d7261ae3c2734f2e",
+  "authored_assertion_count": 9,
+  "extraction_status": "NOT_RUN",
+  "label_status": "UNLABELED_AGENT_PROPOSALS",
+  "human_review_status": "NOT_PERFORMED",
+  "heldout": false,
+  "custody_status": "No custody or blindness claim; exposed development source."
+}

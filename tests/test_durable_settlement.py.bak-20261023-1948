@@ -1,0 +1,235 @@
+"""Future local fixture liability controls; no actual bill, authorization or call."""
+
+import base64
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
+import unittest
+from unittest.mock import patch
+
+from claim_auditor.accounting import (
+    bind_budget_admission, budget_admission_id, ledger_root_identity,
+)
+from claim_auditor.contracts import (
+    AuditError, BudgetState, EvaluationLock, LiveBudgetAdmission, LiveExperimentConfig,
+    LiveUsage, ReservationReconciliation, canonical_json, sha256,
+)
+from claim_auditor.evaluation.live_runner import run_live_experiment
+from claim_auditor.providers.experiment import run_configured_live
+from claim_auditor.providers.http_json import StaticJSONTransport
+from claim_auditor.providers.live import produce_live
+
+from .live_support import fixture_json_reply, fixture_live_inputs
+from .pricing_support import synthetic_card
+from .provider_support import ledger_for
+
+
+class DurableSettlementTests(unittest.TestCase):
+    def setUp(self):
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.base = Path(temporary.name)
+        self.request, self.prompt, self.adapter, self.grant, self.source = fixture_live_inputs(self.base)
+
+    def pending_fixture(self, root):
+        ledger = ledger_for(root, self.request)
+        reply = fixture_json_reply(self.request, self.grant, settled_cost_usd=None, cost_receipt=None)
+        response = produce_live(
+            self.request, system_prompt=self.prompt, adapter=self.adapter,
+            authorization=self.grant, ledger=ledger,
+            transport=StaticJSONTransport(authorization_id=self.grant.authorization_id, replies=[reply]),
+        )
+        self.assertEqual((response.status, response.error), ("incomplete", "unsettled_liability"))
+        self.assertEqual((len(response.attempts), len(response.usage)), (1, 1))
+        self.assertEqual(response.usage[0].origin, "fixture")
+        self.assertIsNone(response.usage[0].cost_usd)
+        return ledger, response
+
+    def reconciliation(self, root, response, *, cost=0.1):
+        state = BudgetState.model_validate_json((root / "budget.json").read_bytes())
+        # Reparse the actual producer's expanded central usage record rather than
+        # copying a wire type. All receipt data remains explicit simulation.
+        usage = LiveUsage.model_validate_json(canonical_json(response.usage[0].model_copy(update={
+            "cost_usd": cost, "reported_bill_usd": cost, "cost_basis": "fixture",
+            "cost_receipt": "SYNTHETIC-NOT-A-PROVIDER-BILL", "cost_error": None,
+        })))
+        usage_bytes = canonical_json(usage)
+        price_bytes = canonical_json({"fixture_only": True, "not_a_provider_bill": True})
+        record = ReservationReconciliation(
+            reconciliation_id="SYNTHETIC-RECONCILIATION", reservation_id=state.pending.reservation_id,
+            budget_state_digest=sha256(canonical_json(state)), usage=usage,
+            usage_receipt="SYNTHETIC-USAGE", pricing_receipt="SYNTHETIC-PRICE",
+            usage_receipt_digest=sha256(usage_bytes), pricing_receipt_digest=sha256(price_bytes),
+            owner_id="SYNTHETIC-NOT-OWNER", recorded_at=datetime.now(timezone.utc).isoformat(),
+            rationale="Synthetic fixture settlement only; never human admission or provider spend evidence.",
+        )
+        return record, usage_bytes, price_bytes
+
+    def test_missing_receipt_bytes_and_stale_state_leave_usage_and_successor_blocked(self):
+        """what_bug_this_catches: receipt names or stale owner state clearing an unresolved physical attempt."""
+        root = self.base / "durable"
+        ledger, response = self.pending_fixture(root)
+        record, usage_bytes, price_bytes = self.reconciliation(root, response)
+        before = (root / "budget.json").read_bytes()
+        events = (root / "attempts.jsonl").read_bytes()
+        with self.assertRaises(AuditError) as caught:
+            ledger.reconcile(record)
+        self.assertEqual(caught.exception.reason, "reconciliation_receipts_required")
+        with self.assertRaises(AuditError) as caught:
+            ledger.reconcile(record.model_copy(update={"budget_state_digest": "0" * 64}),
+                             usage_receipt_data=usage_bytes, pricing_receipt_data=price_bytes)
+        self.assertEqual(caught.exception.reason, "reconciliation_state_changed")
+        self.assertEqual((root / "budget.json").read_bytes(), before)
+        self.assertEqual((root / "attempts.jsonl").read_bytes(), events)
+        with self.assertRaises(AuditError) as caught:
+            ledger_for(root, self.request).reserve(1, 1, 0.01, 1.0)
+        self.assertEqual(caught.exception.reason, "unsettled_liability")
+
+    def test_validated_receipt_event_precedes_state_and_failed_save_stays_pending(self):
+        """what_bug_this_catches: clearing pending liability before supplied receipt bytes become durable."""
+        root = self.base / "durable"
+        ledger, response = self.pending_fixture(root)
+        record, usage_bytes, price_bytes = self.reconciliation(root, response)
+        before = (root / "budget.json").read_bytes()
+        with patch.object(ledger, "_save", side_effect=OSError("synthetic atomic state failure")):
+            with self.assertRaises(AuditError) as caught:
+                ledger.reconcile(record, usage_receipt_data=usage_bytes, pricing_receipt_data=price_bytes)
+        self.assertEqual(caught.exception.reason, "invalid_reconciliation")
+        self.assertEqual((root / "budget.json").read_bytes(), before)
+        events = [json.loads(line) for line in (root / "attempts.jsonl").read_bytes().splitlines()]
+        validated = [event for event in events if event["phase"] == "owner_reconciliation_validated"]
+        self.assertEqual(len(validated), 1)
+        self.assertEqual(base64.b64decode(validated[0]["usage_receipt_base64"]), usage_bytes)
+        self.assertEqual(base64.b64decode(validated[0]["pricing_receipt_base64"]), price_bytes)
+        self.assertFalse(any(event["phase"] == "owner_reconciliation_committed" for event in events))
+        reopened = ledger_for(root, self.request)
+        with self.assertRaises(AuditError) as caught:
+            reopened.reserve(1, 1, 0.01, 1.0)
+        self.assertEqual(caught.exception.reason, "unsettled_liability")
+        # Same exact pending state can later be reconciled with explicit fixture
+        # bytes. This exercises existing math, never a ledger reset helper.
+        settled = reopened.reconcile(record, usage_receipt_data=usage_bytes, pricing_receipt_data=price_bytes)
+        self.assertFalse(settled.unknown_settlement)
+        self.assertIsNone(settled.pending)
+        self.assertEqual((settled.remaining_input_tokens, settled.remaining_output_tokens), (90, 45))
+
+    def test_over_cap_receipted_fixture_never_becomes_free_budget(self):
+        """what_bug_this_catches: explicit reconciliation receipts overriding the original request reservation."""
+        root = self.base / "durable"
+        ledger, response = self.pending_fixture(root)
+        record, usage_bytes, price_bytes = self.reconciliation(root, response, cost=0.5)
+        with self.assertRaises(AuditError) as caught:
+            ledger.reconcile(record, usage_receipt_data=usage_bytes, pricing_receipt_data=price_bytes)
+        self.assertEqual(caught.exception.reason, "reservation_overrun")
+        state = BudgetState.model_validate_json((root / "budget.json").read_bytes())
+        self.assertTrue(state.unknown_settlement)
+        self.assertIsNotNone(state.pending)
+        self.assertEqual(state.remaining_cost_usd, self.request.caps.total_cost_usd)
+
+    def admission(self, root, protocol_digest):
+        record = LiveBudgetAdmission(
+            admission_id="pending", owner_id="SYNTHETIC-NOT-OWNER",
+            admitted_at="2020-01-01T00:00:00+00:00", protocol_digest=protocol_digest,
+            packet_digest=self.request.packet.packet_digest, ledger_root_identity=ledger_root_identity(root),
+            caps_digest=sha256(canonical_json(self.request.caps)),
+            authorization_ids={role: self.grant.authorization_id for role in ("extraction", "single_pass")},
+            liability_scope="per_role_equal_caps", receipt_reference="SYNTHETIC-NOT-A-BUDGET-RECEIPT",
+        )
+        return record.model_copy(update={"admission_id": budget_admission_id(record)})
+
+    def test_budget_admission_cannot_be_reused_at_a_new_root(self):
+        """what_bug_this_catches: moving a content-bound admission to bypass liability in its selected root."""
+        root = self.base / "durable"
+        record = self.admission(root, "a" * 64)
+        fields = dict(protocol_digest="a" * 64, caps=self.request.caps, authorization_ids=record.authorization_ids)
+        bind_budget_admission(root, record, **fields)
+        before = (root / "ADMISSION.json").read_bytes()
+        with self.assertRaises(AuditError) as caught:
+            bind_budget_admission(self.base / "fresh-root", record, **fields)
+        self.assertEqual(caught.exception.reason, "budget_admission_mismatch")
+        self.assertFalse((self.base / "fresh-root").exists())
+        self.assertEqual((root / "ADMISSION.json").read_bytes(), before)
+
+    def test_fresh_runner_outputs_reuse_unresolved_role_root_before_any_dispatch(self):
+        """what_bug_this_catches: selecting another output path bypassing an unresolved role ledger."""
+        packet = self.request.packet
+        caps = self.request.caps
+        roles = ("extraction", "single_pass")
+        arms = ["product_full_index", "packet_candidate", "packet_grep", "live_extraction", "live_single_pass"]
+        # Unit boundary probe, not an admitted LOCK journey. The existing lock
+        # guard and preparation are explicitly injected; no actual custody or
+        # admission is invented. Actual role-root lookup/refusal remains in use.
+        lock = EvaluationLock(
+            protocol_id="SYNTHETIC-UNADMITTED", admitted=False, admitted_by=None, admitted_at=None,
+            code_digest="0" * 64, taxonomy_version="declared-static/1", matcher_version="unused",
+            packet_version=packet.packet_version, arm_names=arms,
+            provider_models={arm: self.request.model for arm in ("live_extraction", "live_single_pass")},
+            source_seal_digest=packet.snapshot_manifest_digest, gold_seal_digest="0" * 64,
+            source_rights_receipt="NOT-A-RECEIPT", custody_receipt="NOT-A-RECEIPT", heldout_accessed=False,
+            max_input_tokens=caps.total_input_tokens, max_output_tokens=caps.total_output_tokens,
+            max_remote_seconds=int(caps.total_seconds), max_cost_usd=caps.total_cost_usd,
+        )
+        protocol = self.base / "SYNTHETIC-UNADMITTED.json"
+        raw = canonical_json(lock)
+        protocol.write_bytes(raw)
+        pin = sha256(raw)
+        durable = self.base / "durable"
+        leaf = durable / pin / packet.packet_digest / "extraction"
+        self.pending_fixture(leaf)
+        before = (leaf / "budget.json").read_bytes()
+
+        def prepare_fixture(protocol_path, snapshot_root, out):
+            out.mkdir(parents=True)
+            (out / "packet.json").write_bytes(canonical_json(packet))
+
+        transports = {role: StaticJSONTransport(authorization_id=self.grant.authorization_id, replies=[]) for role in roles}
+        with patch("claim_auditor.evaluation.live_runner._check_lock"), \
+                patch("claim_auditor.evaluation.live_runner.prepare_evaluation", side_effect=prepare_fixture), \
+                patch("claim_auditor.evaluation.live_runner._run_paired") as dispatch, \
+                patch.object(StaticJSONTransport, "post_json") as post:
+            for name in ("fresh-output-a", "fresh-output-b"):
+                out = self.base / name
+                with self.subTest(out=name), self.assertRaises(AuditError) as caught:
+                    run_live_experiment(protocol, self.source, out, protocol_digest=pin, caps=caps,
+                                        system_prompts={role: self.prompt for role in roles},
+                                        models={role: self.request.model for role in roles},
+                                        authorizations={role: self.grant for role in roles}, transports=transports,
+                                        adapters={role: self.adapter for role in roles}, ledger_root=durable)
+                self.assertEqual(caught.exception.reason, "unsettled_liability")
+                failure = json.loads((out / "failed-before-inference" / "FAILED.json").read_bytes())
+                self.assertEqual((failure["reason"], failure["provider_attempts"]), ("unsettled_liability", 0))
+                self.assertEqual(set(failure["arms"]), set(arms))
+                self.assertEqual((leaf / "budget.json").read_bytes(), before)
+            dispatch.assert_not_called()
+            post.assert_not_called()
+
+    def test_factory_forwards_exact_root_admission_and_optional_observers(self):
+        """what_bug_this_catches: factory creating fresh ledgers or dropping trusted settlement observer binding."""
+        roles = ("extraction", "single_pass")
+        root = self.base / "durable"
+        pin = "a" * 64
+        admission = self.admission(root, pin)
+        config = LiveExperimentConfig(
+            caps=self.request.caps, system_prompts={role: self.prompt for role in roles},
+            models={role: self.request.model for role in roles}, authorizations={role: self.grant for role in roles},
+            allowed_endpoints={role: [self.grant.endpoint] for role in roles},
+            rate_cards={role: synthetic_card() for role in roles},
+        )
+        observers = {role: (lambda context: None) for role in roles}
+        with patch("claim_auditor.providers.experiment.HTTPJSONTransport") as factory, \
+                patch("claim_auditor.evaluation.run_live_experiment", return_value={"fixture_only": True}) as runner:
+            run_configured_live(self.base / "not-opened-lock", self.source, self.base / "fresh-output",
+                                protocol_digest=pin, config=config,
+                                credential_headers={role: {"authorization": "SYNTHETIC-NOT-A-CREDENTIAL"} for role in roles},
+                                owner_activation=True, ledger_root=root, budget_admission=admission,
+                                settlement_observers=observers)
+        self.assertEqual(factory.call_count, 2)
+        for call, role in zip(factory.call_args_list, sorted(roles)):
+            self.assertEqual(call.kwargs["ledger_root"], root)
+            self.assertEqual(call.kwargs["budget_admission"], admission)
+            self.assertIs(call.kwargs["settlement_observer"], observers[role])
+        self.assertEqual(runner.call_args.kwargs["ledger_root"], root)
+        self.assertEqual(runner.call_args.kwargs.get("budget_admission"), admission)
+        self.assertEqual(runner.call_args.kwargs.get("settlement_observers"), observers)
+        self.assertFalse((self.base / "fresh-output").exists())

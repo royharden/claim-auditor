@@ -1,0 +1,125 @@
+# Deferred regression activation
+
+This suite is source construction. It has not been imported, collected or executed.
+Dirty Mode permits syntax parsing and focused source inspection only. No test result,
+runtime security result, benchmark score or product acceptance follows from these files.
+
+The tests use stdlib `unittest` and the application's existing dependencies. No optional
+test dependency is required. Inputs and scorer controls are agent-authored DEV examples,
+never human gold. Reports in integration tests are produced by the application only at
+future execution; no measured passing output is stored in fixtures.
+
+## Activation order
+
+After INT closes Dirty Mode and authorizes normal validation:
+
+1. Establish the supported Python 3.12 environment and reviewed dependency lock. Run the
+   core test modules first, including both successful citation reopening and refusal
+   controls. Tests must be discovered as the `tests` package so relative imports work.
+2. Run fake/replay producer and durable budget regressions. Inspect both attempt and
+   simulated-usage records. These tests make no live call and cannot meet the promoted
+   plan's actual live extraction/single-pass comparison obligation.
+3. Run the closed-report integration tests with actual parser resource enforcement.
+   Failure to establish enforced memory/time bounds is a setup failure; do not skip or
+   mock it into an integration pass. A completed report must reopen before tampering,
+   and each tamper must then fail integrity.
+4. Activate paired-run orchestration and ruling-history regressions against the
+   published interfaces. Preserve failure rows, equal packet identities and
+   immutable annotation history. No annotation test constitutes a human action.
+5. Under normal independent review, add and execute the remaining hostile-input probes:
+   Git config/hooks/filter/alternates/replaces and corruption, parser hard limits and
+   import-shadow sentinels, file replacement races, symlink/junction refusal on Windows,
+   interrupted publication, malicious report/citation mutations and escaped UI inspection.
+   These require actual platform execution; the current unit seams do not prove them.
+
+Proposed invocation from the product repository, **not run during construction**:
+
+```powershell
+python -m unittest discover -s tests -t . -v
+```
+
+Source-layout imports require the application to be installed in that later environment
+or `src` to be on its import path. Environment installation is deferred, not a hidden
+test prerequisite completed by this package. No test runner configuration, CI workflow
+or dependency installation is added here.
+
+## Current regression boundaries
+
+| Source | Consequential invariant |
+|---|---|
+| `tests/test_integrity.py` | Changed source bytes and foreign snapshots fail integrity; a self-hashed negative certificate still needs query replay; absent/duplicate coverage is refused. |
+| `tests/test_policy.py` | Dynamic/incomplete scopes cannot accuse absence; a whole-value contradiction is missing; negation reverses presence/absence; runtime semantics and failed citations abstain. |
+| `tests/test_coordinates_report.py` | CRLF, non-BMP and combining bytes retain exact offsets; repeated inline alignment refuses ambiguity; hostile HTML, links, terminal controls and backticks stay inert. |
+| `tests/test_scoring_packet.py` | Invalid/duplicate rows cannot vanish; all-unknown/all-missing controls expose omissions and harm; failure rows stay in denominators; closed packet fields refuse labels. |
+| `tests/test_budget.py` | Pending, unknown or overrun liability blocks the next request across ledger reopen; settlement debits the shared remainder. |
+| `tests/test_providers.py` | Raw-packet extraction accepts newly proposed exact-span atoms; fake/replay identity, qualifiers, screening, evidence scope, retry budget and unknown settlement are enforced. |
+| `tests/test_closed_report.py` | Real future closed artifacts reopen before mutation; changed predictions or embedded source invalidate a previously complete report. |
+| `tests/test_paired.py` | All paired arms receive the same raw packet; failed retries/invalid inputs remain rows; fake/replay closure cannot claim live/human acceptance; outputs are fresh. |
+| `tests/test_rulings.py` | Exact imports are idempotent, revisions preserve history/dissent, changed bindings fail, human-typed imports require explicit operator action, and partial appends refuse recovery. |
+| `tests/test_packet_boundary.py` | Rehashed forged excerpts and invalid unused pointers still require citation reopening; no unadmitted retrieval or self-granted absence privilege. |
+| `tests/test_packet_facts.py` | Complete admitted files can support scoped facts; partial/dynamic files abstain; absent facts never yield coverage; opposite literals require the exact binding. |
+| `tests/test_live_boundary.py` | Dormant producer/HTTP construction refuses absent owner activation before any transport or budget activity; no actual authorization or credentials are created. |
+| `tests/test_paired_integrity.py` | The published verifier must reopen positive prerequisites, reject missing/resealed rows and hidden attempts, honor an external manifest pin and verify before the scorer reads gold. |
+| `tests/test_custody_boundary.py` | DEV staging refuses heldout/admission, unsafe aliases, placeholder operator identity and unpinned seals; exports verify before creating output. |
+| `tests/test_live_admission.py` | Fixture-only dormant adapter probes bind request/payload/model/expiry/scope, preserve unknown usage and reject hidden attempts, oversize/ambiguous output or mismatched resolved models. |
+| `tests/test_custody_lifecycle.py` | Local-fixture source/label exports preserve pinned bytes, agent history/dissent and stale-evidence refusal without inferring real custody. |
+| `tests/test_manual_annotation.py` | Source-first raw coverage/parents preserve extractor omissions, refuse duplicate atoms and forged completeness, and keep agent proposals separate from human gold. |
+| `tests/test_dev_packet.py` | DEV packets remain prepared/unadmitted/not-run, create no LOCK/receipts and cannot substitute for admitted locked evaluation. |
+
+Every test has a short `what_bug_this_catches` explanation. `tests/support.py` supplies
+small typed inputs. Its synthetic scorer findings intentionally isolate scorer logic;
+their citation flags are not claimed as citation validation. The handcrafted `StaticIndex`
+inputs isolate policy/coverage replay and do not validate parser correctness.
+The human-action refusal probe contains an explicitly synthetic invalid provenance
+input; the assertion requires rejection before any human-typed row is written.
+
+The paired closure source consumes INT's published `evaluation.verify_paired` and
+`evaluation.score_paired` interfaces, plus D5's `PacketFacts` helpers. No substitute
+verifier/model is introduced. The tests themselves remain unexecuted, so they do not
+prove that a forged closed run is rejected. Without an external manifest digest pin,
+the verifier establishes self-consistency only, not external provenance or acceptance.
+
+The remaining closed-paired mutation probes must start from a run emitted by the real
+future runner and first accepted by its real verifier. Mutate one artifact per fresh
+run: remove an arm's predictions artifact; alter/omit a prediction row while resealing
+its local artifact digest; remove a failed attempt from metadata while retaining its
+durable journal; change the packet/input identity of one arm. Each case must call the
+published verifier and assert its stable integrity failure, without replacing it with
+a test-side verifier. Preserve refusal outputs and never count a failed setup as a
+passing mutation test. These probes use the canonical public API signatures.
+
+Bare-CR source defect: `validate_span` now reuses
+`RawDocument.decode(raw).line_bounds(start_byte, end_byte)`, the same original-byte
+authority used by inventory. Byte identity, strict UTF-8 quote decoding and stable
+integrity errors are retained. Bare-CR, Unicode half-open line ends and empty-file
+source regressions record that boundary; none has been executed. Analogous mappings
+in provider/packet modules were reported to their owners for reconciliation. No
+cross-owner fix is implied by the citation change.
+
+`test_custody_boundary.py` uses invalid negative inputs only. The lifecycle unit source
+also defines conspicuously synthetic receipt-shaped inputs for future local fixture
+execution; these are not actual operator attestations, real receipts or custody
+evidence. No stage or receipt has been created during construction. A real operator
+stage→verify→source/label export journey still requires actual provenance/access inputs
+and independent validation. Fixture success cannot satisfy custody or access isolation.
+
+Dormant live unit source uses only `StaticJSONTransport`, `.invalid` endpoint names,
+and explicitly synthetic authorization/tokenizer/cost-shaped fixture inputs. No actual
+owner grant, credential, settlement receipt or live result is inferred. The existing
+disabled-live test now also asserts no worker/HTTPS construction occurs before refusal.
+Real network, provider authorization and usage settlement remain separate later work.
+
+Source-first annotation fixtures author agent records only. Negative human-typed
+inputs must be rejected before output; no synthetic probe may be reported as an actual
+human action or human-adjudicated label. An empty candidate inventory is an intentional
+omission control, not a measured passing report. Preliminary proposal export must retain
+pending raw blocks and use `agent-proposals.jsonl`, while human gold export refuses agent
+inventory. No sample size, human staffing or promoted acceptance obligation is reduced.
+
+## Remaining acceptance
+
+No tests have run. Dependency resolution, cross-platform behavior, parser/Git isolation,
+snapshot→audit→report and tamper journeys, paired-arm orchestration, ruling persistence,
+actual human custody, locked/live comparisons, actual Action artifacts and independent
+nonauthoring product acceptance remain unverified. The promoted plan's corpus sizes,
+denominators and live-arm obligations are unchanged.

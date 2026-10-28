@@ -1,0 +1,43 @@
+{
+  "format": "corpus-dev-provenance/1",
+  "family_id": "dev-plugin-dispatch",
+  "designation": "DEV_ONLY",
+  "author_type": "agent",
+  "author_id": "0012_Codex_gpt-61-sol_D7",
+  "author_session": "01a16a95-430e-7d92-966e-e2ca8e221991",
+  "authored_on": "2026-10-23",
+  "origin": "Original source composed for claim-auditor DEV pilot; no external source acquisition.",
+  "rights_basis": "Original agent-authored project material; no third-party copied code; not a legal or independent rights-review receipt.",
+  "ancestry": {
+    "parent_family": null,
+    "mutation_of": null,
+    "structure": "cross-module-registry-and-plugin-lookup",
+    "shared_elements": "Explicit README claim grammar only; all six authored by the same agent."
+  },
+  "source_root": "source",
+  "source_inventory": [
+    {
+      "path": "dispatch.py",
+      "sha256": "28718556c27278ebeeb93219a3603814a628210a9dbb4fd739829ec17b928b8a",
+      "size": 329
+    },
+    {
+      "path": "README.md",
+      "sha256": "5441777b16d885cfa25d66c87c861696ecbdf04c89fb3f4e154da19b948c3537",
+      "size": 515
+    },
+    {
+      "path": "registry.py",
+      "sha256": "7995eb937d654b22dcfeda4025ba21f82797f1e69f4e847fc120650b7e3d762d",
+      "size": 138
+    }
+  ],
+  "inventory_digest_method": "sha256(sorted compact JSON source_inventory, ensure_ascii default)",
+  "source_inventory_digest": "34fbc860684482282b1d36cbd928b8b4033908b400147189cf607adc5aa63cd1",
+  "authored_assertion_count": 8,
+  "extraction_status": "NOT_RUN",
+  "label_status": "UNLABELED_AGENT_PROPOSALS",
+  "human_review_status": "NOT_PERFORMED",
+  "heldout": false,
+  "custody_status": "No custody or blindness claim; exposed development source."
+}

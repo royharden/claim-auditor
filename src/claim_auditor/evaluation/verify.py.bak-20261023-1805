@@ -1,0 +1,438 @@
+"""Offline paired-artifact verification and post-closure descriptive scoring."""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime
+from pathlib import Path
+
+from pydantic import ValidationError
+
+from claim_auditor.citations import validate_span, verify_report
+from claim_auditor.contracts import (
+    Attempt, AuditError, AuditReport, BudgetState, EvaluationPacket, EvaluationResult, Evidence, GoldAtom,
+    Inventory, PredictionRow, ProviderCaps, ProviderRequest, ProviderResponse, Reservation,
+    canonical_json, sha256, stable_id,
+)
+from claim_auditor.evaluation.arms import (
+    failure_row, packet_inventory, resolve_packet_claims, validate_packet, validate_proposal_citations,
+)
+from claim_auditor.evaluation.baseline import run_packet_grep
+from claim_auditor.evaluation.packet import code_digest
+from claim_auditor.evaluation.packet_facts import PACKET_FACT_VERSION, build_packet_facts
+from claim_auditor.evaluation.runner import PAIRED_ARMS, RUNNER_VERSION, _status, _write
+from claim_auditor.evaluation.scoring import score_rows
+from claim_auditor.index import PARSER_VERSION
+from claim_auditor.snapshot import load_snapshot
+from claim_auditor.snapshot.safeio import bounded_scandir, read_ordinary
+
+_CAP = 32 * 1024 * 1024
+_TOP = {"runner_version", "run_id", "code_digest", "parser_version", "packet_fact_version",
+        "snapshot_id", "packet_digest", "input_digest", "mode", "state", "started_at", "completed_at",
+        "source_only", "runtime_validation", "comparative_complete", "human_adjudicated",
+        "caps", "arms", "artifacts", "limitations"}
+_INFO = {"status", "rows", "failure_rows", "input_digest", "packet_digest", "treatment"}
+_PROVIDER_INFO = {"request", "response", "attempts", "simulated_usage", "provider_observations"}
+
+
+def _json(raw: bytes):
+    try:
+        value = json.loads(raw)
+        # Source writers are canonical. Reject duplicate keys, nonfinite values,
+        # trailing payload and alternate encodings instead of parsing ambiguity.
+        if raw not in {canonical_json(value), canonical_json(value) + b"\n"}:
+            raise ValueError("noncanonical artifact")
+        return value
+    except (ValueError, UnicodeDecodeError, TypeError) as exc:
+        raise AuditError("paired_invalid_artifact", "artifact is not bounded canonical JSON", 4) from exc
+
+
+def _models(raw: bytes, model: type) -> list:
+    lines = raw.splitlines()
+    if len(lines) > 20000 or any(not line for line in lines):
+        raise AuditError("paired_row_integrity", "blank or excessive artifact rows", 4)
+    return [model.model_validate(_json(line)) for line in lines]
+
+
+def _check_rows(rows: list[PredictionRow], packet: EvaluationPacket, snapshot, source: Path, arm: str) -> None:
+    seen: set[str] = set()
+    successes = sum(row.status == "prediction" for row in rows)
+    for position, row in enumerate(rows):
+        if row.prediction_id in seen or row.family_id != packet.snapshot_id:
+            raise AuditError("paired_row_integrity", "duplicate row or wrong snapshot/family", 4)
+        seen.add(row.prediction_id)
+        if row.status != "prediction":
+            if row.finding is not None or row.accused_predicate_ids or not row.error:
+                raise AuditError("paired_row_integrity", "failure row cannot carry a finding/accusation", 4)
+            # Failure IDs must bind this arm, snapshot, reason and an explicit
+            # bounded ordinal (zero final, physical index+1, inventory, fact gap).
+            if not any(row.prediction_id == failure_row(packet.snapshot_id, arm, row.status, row.error, i).prediction_id
+                       for i in {0, 1, 2, 1000, max(0, position - successes)}):
+                raise AuditError("paired_row_integrity", "failure identity differs", 4)
+            continue
+        if row.finding is None or row.error is not None:
+            raise AuditError("paired_row_integrity", "prediction needs one finding and no pipeline error", 4)
+        claim = row.finding.claim
+        span = claim.span
+        if (span.path, span.file_sha256, span.snapshot_id) != (packet.readme_path, packet.readme_sha256, packet.snapshot_id):
+            raise AuditError("paired_identity_mismatch", "claim is outside packet README", 4)
+        validate_span(snapshot, source, span)
+        parent = stable_id("sentence", packet.snapshot_id, span.path, span.start_byte, span.end_byte)
+        if (claim.parent_id != parent or claim.claim_id != stable_id("claim", parent, claim.atom_ordinal)
+                or row.prediction_id != claim.claim_id or row.accused_predicate_ids != row.finding.accused_predicate_ids):
+            raise AuditError("paired_row_integrity", "claim/row identities differ", 4)
+        ids: set[str] = set()
+        for predicate in claim.predicates:
+            fields = predicate.model_dump(mode="json", exclude={"predicate_id"})
+            if predicate.predicate_id in ids or predicate.predicate_id != stable_id("predicate", claim.claim_id, fields):
+                raise AuditError("paired_row_integrity", "predicate identity differs", 4)
+            ids.add(predicate.predicate_id)
+
+
+def _ledger(root: Path, arm: str, request: ProviderRequest, response: ProviderResponse,
+            artifacts: dict[str, bytes]) -> None:
+    prefix = f"{arm}-budget/"
+    events_raw = artifacts.get(prefix + "attempts.jsonl")
+    if events_raw is None:
+        if response.attempts:
+            raise AuditError("paired_attempt_integrity", "attempts have no durable events", 4)
+        return
+    events = [_json(line) for line in events_raw.splitlines()]
+    if len(events) > 8:
+        raise AuditError("paired_attempt_integrity", "event count exceeds the explicit two-attempt envelope", 4)
+    reserved: dict[str, tuple[Attempt, Reservation]] = {}
+    closed: list[Attempt] = []
+    simulated: list[dict] = []
+    for event in events:
+        if type(event) is not dict:
+            raise AuditError("paired_attempt_integrity", "invalid event", 4)
+        phase = event.get("phase")
+        if phase == "reserved" and set(event) == {"phase", "attempt", "reservation"}:
+            attempt = Attempt.model_validate(event["attempt"])
+            reservation = Reservation.model_validate(event["reservation"])
+            if (len(reserved) != len(closed) or attempt.attempt_id in reserved or attempt.status != "reserved"
+                    or attempt.attempt_id != stable_id("attempt", response.request_digest, reservation.reservation_id)):
+                raise AuditError("paired_attempt_integrity", "duplicate or wrong reservation identity", 4)
+            if (reservation.input_tokens, reservation.output_tokens, reservation.seconds, reservation.cost_usd) != (
+                    request.caps.request_input_tokens, request.caps.request_output_tokens,
+                    request.caps.request_seconds, request.caps.request_cost_usd):
+                raise AuditError("paired_attempt_integrity", "physical liability differs from caps", 4)
+            reserved[attempt.attempt_id] = (attempt, reservation)
+        elif phase == "closed" and set(event) in ({"phase", "attempt"}, {"phase", "attempt", "simulated_usage"}):
+            attempt = Attempt.model_validate(event["attempt"])
+            original = reserved.get(attempt.attempt_id)
+            if original is None or any(a.attempt_id == attempt.attempt_id for a in closed):
+                raise AuditError("paired_attempt_integrity", "unreserved/duplicate closed attempt", 4)
+            if original[0].model_dump(exclude={"status", "error"}) != attempt.model_dump(exclude={"status", "error"}):
+                raise AuditError("paired_attempt_integrity", "attempt changed identity/observations", 4)
+            closed.append(attempt)
+            if "simulated_usage" in event:
+                simulated.append(event["simulated_usage"])
+        elif phase in {"held", "refused"} and set(event) == {"phase", "response"}:
+            recorded = ProviderResponse.model_validate(event["response"])
+            if recorded.request_digest != response.request_digest:
+                raise AuditError("paired_attempt_integrity", "held/refused response identity differs", 4)
+        else:
+            raise AuditError("paired_attempt_integrity", "unknown/extra event fields", 4)
+    if (closed != response.attempts or len(reserved) != len(closed)
+            or simulated != [u.model_dump(mode="json") for u in response.simulated_usage]
+            or len(closed) > request.caps.max_retries + 1):
+        raise AuditError("paired_attempt_integrity", "hidden/missing/extra attempts or usage", 4)
+    if not closed:
+        return
+    request_raw, budget_raw = artifacts.get(prefix + "requests.json"), artifacts.get(prefix + "budget.json")
+    if request_raw is None or budget_raw is None:
+        raise AuditError("paired_attempt_integrity", "physical attempts need budget/request closure", 4)
+    journal, state = _json(request_raw), BudgetState.model_validate(_json(budget_raw))
+    maximum = 1 if request.arm == "single_pass" else request.caps.max_logical_requests
+    identity = sha256(canonical_json(dict(packet=request.packet.packet_digest, caps=request.caps,
+                                         treatment=f"{request.arm}:{response.mode}:{request.model}", maximum=maximum)))
+    if journal != {"identity": identity, "requests": [response.request_digest]}:
+        raise AuditError("paired_attempt_integrity", "logical request journal differs", 4)
+    remaining = [request.caps.total_input_tokens, request.caps.total_output_tokens,
+                 request.caps.total_cost_usd, request.caps.total_seconds]
+    unknown = False
+    for index, usage in enumerate(response.simulated_usage):
+        values = [usage.input_tokens, usage.output_tokens, usage.cost_usd, usage.elapsed_seconds]
+        if any(value is None for value in values) or any(value > liability for value, liability in zip(values, (
+                request.caps.request_input_tokens, request.caps.request_output_tokens,
+                request.caps.request_cost_usd, request.caps.request_seconds)) if value is not None):
+            unknown = True
+            if index != len(closed) - 1:
+                raise AuditError("paired_attempt_integrity", "an attempt followed unknown settlement", 4)
+            break
+        remaining = [left - used for left, used in zip(remaining, values)]
+    unknown |= len(response.simulated_usage) < len(closed)
+    actual = [state.remaining_input_tokens, state.remaining_output_tokens, state.remaining_cost_usd, state.remaining_seconds]
+    if any(abs(left - right) > 1e-9 for left, right in zip(actual, remaining)):
+        raise AuditError("paired_attempt_integrity", "remaining simulated liability differs", 4)
+    if state.unknown_settlement != unknown or (state.pending is not None) != unknown:
+        raise AuditError("paired_attempt_integrity", "unknown/pending settlement was hidden", 4)
+    if unknown and state.pending != reserved[closed[-1].attempt_id][1]:
+        raise AuditError("paired_attempt_integrity", "pending reservation identity differs", 4)
+    if unknown and response.status == "proposed":
+        raise AuditError("paired_attempt_integrity", "unsettled liability cannot report success", 4)
+
+
+def verify_paired(run_root: Path, snapshot_root: Path, *, manifest_digest: str | None = None) -> dict:
+    """Verify source-only closure without provider execution or reading any gold.
+
+    Returns manifest/digest, packet, per-arm PredictionRow lists and Attempt
+    lists. An optional external manifest digest pins origin; without it this is
+    self-consistency/integrity, not proof of authorship, quality or acceptance.
+    """
+    try:
+        return _verify(run_root, snapshot_root, manifest_digest)
+    except (ValidationError, KeyError, TypeError, ValueError) as exc:
+        raise AuditError("paired_invalid_artifact", "closed paired schema/shape is invalid", 4) from exc
+
+
+def _verify(root: Path, source: Path, expected_digest: str | None) -> dict:
+    raw = read_ordinary(root, "PAIRED.json", cap=_CAP)
+    digest = sha256(raw)
+    if expected_digest is not None and digest != expected_digest:
+        raise AuditError("paired_artifact_integrity", "externally pinned manifest differs", 4)
+    manifest = _json(raw)
+    if type(manifest) is not dict or set(manifest) != _TOP:
+        raise AuditError("paired_invalid_artifact", "manifest fields differ", 4)
+    if manifest["state"] not in {"closed_source_only", "failed_input"} or not manifest["completed_at"]:
+        raise AuditError("paired_not_closed", "paired run is unfinished", 4)
+    started = datetime.fromisoformat(manifest["started_at"])
+    completed = datetime.fromisoformat(manifest["completed_at"])
+    if started.tzinfo is None or completed.tzinfo is None or started > completed:
+        raise AuditError("paired_not_closed", "closure timestamps are invalid", 4)
+    if (manifest["runner_version"] != RUNNER_VERSION or manifest["packet_fact_version"] != PACKET_FACT_VERSION
+            or manifest["parser_version"] != PARSER_VERSION or manifest["code_digest"] != code_digest()
+            or manifest["source_only"] is not True or manifest["comparative_complete"] is not False
+            or manifest["human_adjudicated"] is not False or manifest["runtime_validation"] != "unverified"
+            or manifest["mode"] != "fake_or_replay_only"):
+        raise AuditError("paired_identity_mismatch", "source versions/mode/acceptance identity differs", 4)
+    arms = manifest["arms"]
+    if type(arms) is not dict or set(arms) not in (set(PAIRED_ARMS), {*PAIRED_ARMS, "product_full_index"}):
+        raise AuditError("paired_row_integrity", "all four paired roles must remain present", 4)
+    allowed = {"packet.json", "packet-facts.json", "inventory.json"}
+    for arm in arms:
+        allowed.update(f"{arm}/{name}" for name in ("ARM.json", "predictions.jsonl", "evidence.json"))
+        if arm in {"live_extraction", "live_single_pass"}:
+            allowed.update(f"{arm}-budget/{name}" for name in ("budget.json", "requests.json", "attempts.jsonl"))
+    hashes = manifest["artifacts"]
+    required = {"packet.json", *(f"{arm}/{name}" for arm in arms for name in ("ARM.json", "predictions.jsonl", "evidence.json"))}
+    if type(hashes) is not dict or not required <= set(hashes) <= allowed:
+        raise AuditError("paired_artifact_integrity", "missing/extra artifact closure", 4)
+    artifacts: dict[str, bytes] = {}
+    remaining_bytes = 64 * 1024 * 1024
+    for path in hashes:
+        artifacts[path] = read_ordinary(root, path, cap=min(_CAP, remaining_bytes))
+        remaining_bytes -= len(artifacts[path])
+    top_names = {"PAIRED.json", *(path.split("/", 1)[0] for path in hashes)}
+    if "product_full_index" in arms and (root / "full-index-run").exists():
+        top_names.add("full-index-run")
+    if {entry.name for entry in bounded_scandir(root, 64)} != top_names:
+        raise AuditError("paired_artifact_integrity", "hidden/unlisted root artifact", 4)
+    for directory in sorted({path.split("/", 1)[0] for path in hashes if "/" in path}):
+        expected_files = {path.split("/", 1)[1] for path in hashes if path.startswith(directory + "/")}
+        if {entry.name for entry in bounded_scandir(root / directory, 16)} != expected_files:
+            raise AuditError("paired_artifact_integrity", "hidden/unlisted arm or ledger artifact", 4)
+    if any(sha256(value) != hashes[path] for path, value in artifacts.items()):
+        raise AuditError("paired_artifact_integrity", "artifact hash differs", 4)
+    packet = EvaluationPacket.model_validate(_json(artifacts["packet.json"]))
+    snapshot = load_snapshot(source)
+    validate_packet(packet, snapshot, source)
+    if (manifest["input_digest"] != sha256(canonical_json(packet)) or manifest["packet_digest"] != packet.packet_digest
+            or manifest["snapshot_id"] != packet.snapshot_id):
+        raise AuditError("paired_identity_mismatch", "packet/input/snapshot identity differs", 4)
+    caps = ProviderCaps.model_validate(manifest["caps"])
+    facts = None
+    if manifest["state"] != "failed_input":
+        if "packet-facts.json" not in artifacts:
+            raise AuditError("paired_artifact_integrity", "valid source closure needs fact diagnostics", 4)
+        facts = build_packet_facts(packet)
+        if _json(artifacts["packet-facts.json"]) != facts.diagnostics():
+            raise AuditError("paired_proof_mismatch", "packet fact diagnostics do not replay", 4)
+    inventory = None
+    if "inventory.json" in artifacts:
+        inventory = Inventory.model_validate(_json(artifacts["inventory.json"]))
+        if inventory != packet_inventory(packet, snapshot, source):
+            raise AuditError("paired_proof_mismatch", "candidate inventory was omitted/altered", 4)
+    predictions: dict[str, list[PredictionRow]] = {}
+    attempts: dict[str, list[Attempt]] = {}
+    for arm, info in arms.items():
+        provider = arm in {"live_extraction", "live_single_pass"}
+        if type(info) is not dict or set(info) not in (_INFO, _INFO | _PROVIDER_INFO if provider else _INFO):
+            raise AuditError("paired_invalid_artifact", "arm metadata fields differ", 4)
+        if type(info["rows"]) is not int or type(info["failure_rows"]) is not int:
+            raise AuditError("paired_invalid_artifact", "row counts must be explicit integers", 4)
+        if provider and manifest["state"] != "failed_input" and not _PROVIDER_INFO <= set(info):
+            raise AuditError("paired_attempt_integrity", "provider arm lost its request/response record", 4)
+        if arm == "packet_candidate" and info["status"] == "complete_source" and inventory is None:
+            raise AuditError("paired_artifact_integrity", "complete candidate lost its inventory", 4)
+        if info["status"] not in {"complete_source", "incomplete", "failed_input", "proposed",
+                                  "abstention_screened", "invalid_output", "execution_failure"}:
+            raise AuditError("paired_not_closed", "arm has not reached a recorded outcome", 4)
+        if _json(artifacts[f"{arm}/ARM.json"]) != info:
+            raise AuditError("paired_artifact_integrity", "arm metadata copy differs", 4)
+        paired = arm in PAIRED_ARMS
+        if (info["input_digest"] != (manifest["input_digest"] if paired else None)
+                or info["packet_digest"] != (packet.packet_digest if paired else None)
+                or info["treatment"] != ("equal_packet" if paired else "full_index_utility")):
+            raise AuditError("paired_identity_mismatch", "paired/full-index scope was relabeled", 4)
+        rows = _models(artifacts[f"{arm}/predictions.jsonl"], PredictionRow)
+        evidence = [Evidence.model_validate(item) for item in _json(artifacts[f"{arm}/evidence.json"])]
+        _check_rows(rows, packet, snapshot, source, arm)
+        if info["rows"] != len(rows) or info["failure_rows"] != sum(r.status != "prediction" for r in rows):
+            raise AuditError("paired_row_integrity", "row denominators differ", 4)
+        predictions[arm], attempts[arm] = rows, []
+        successes = [row for row in rows if row.status == "prediction"]
+        if not paired:
+            if successes or info["status"] == "complete_source":
+                full_manifest = verify_report(root / "full-index-run")
+                attempts[arm] = full_manifest.attempts
+                report = AuditReport.model_validate_json(read_ordinary(root / "full-index-run", "report.json", cap=_CAP))
+                if [r.finding for r in successes] != report.findings or evidence != report.evidence:
+                    raise AuditError("paired_proof_mismatch", "full-index results differ from separate report", 4)
+                expected = [PredictionRow(prediction_id=f.claim.claim_id, family_id=packet.snapshot_id, finding=f,
+                                          accused_predicate_ids=f.accused_predicate_ids, status="prediction", error=None)
+                            for f in report.findings]
+                expected.extend(failure_row(packet.snapshot_id, arm, _status(e.reason), e.reason, n)
+                                for n, e in enumerate(report.errors))
+                if rows != expected:
+                    raise AuditError("paired_row_integrity", "full-index error rows were dropped", 4)
+            elif not rows or evidence:
+                raise AuditError("paired_row_integrity", "failed full-index treatment lost its row", 4)
+            continue
+        if provider and "request" in info:
+            request = ProviderRequest.model_validate(info["request"]) if info["request"] is not None else None
+            response = ProviderResponse.model_validate(info["response"]) if info["response"] is not None else None
+            if request is not None:
+                role = "extraction" if arm == "live_extraction" else "single_pass"
+                expected_caps = caps.model_copy(update={"max_logical_requests": 1}) if role == "single_pass" else caps
+                if (request.arm != role or canonical_json(request.packet) != canonical_json(packet)
+                        or request.input_digest != manifest["input_digest"] or request.caps != expected_caps):
+                    raise AuditError("paired_identity_mismatch", "provider saw a different packet/caps", 4)
+            if response is not None:
+                if request is None or response.request_digest != sha256(canonical_json(request)):
+                    raise AuditError("paired_identity_mismatch", "provider request/response binding differs", 4)
+                if (response.status == "proposed" and response.error is not None
+                        or response.status != "proposed" and response.proposals):
+                    raise AuditError("paired_attempt_integrity", "provider terminal payload contradicts its status", 4)
+                if (info["attempts"] != [a.model_dump(mode="json") for a in response.attempts]
+                        or info["simulated_usage"] != [u.model_dump(mode="json") for u in response.simulated_usage]):
+                    raise AuditError("paired_attempt_integrity", "response attempts/usage were hidden", 4)
+                for attempt in response.attempts:
+                    if (attempt.input_digest != request.input_digest or attempt.prompt_digest != request.prompt_digest
+                            or attempt.model != request.model or attempt.policy_version != request.policy_version
+                            or attempt.provider != response.mode or attempt.mode != "replay"
+                            or any(v is not None for v in (attempt.input_tokens, attempt.output_tokens, attempt.elapsed_seconds))
+                            or attempt.cost_usd != 0.0
+                            or attempt.status not in {"proposed", "invalid_output", "execution_failure", "incomplete"}):
+                        raise AuditError("paired_attempt_integrity", "fixture observation/identity was fabricated", 4)
+                if response.status in {"proposed", "invalid_output", "execution_failure"} and (
+                        not response.attempts or response.attempts[-1].status != response.status):
+                    raise AuditError("paired_attempt_integrity", "response hides the terminal physical outcome", 4)
+                _ledger(root, arm, request, response, artifacts)
+                attempts[arm] = response.attempts
+                expected_failures = [failure_row(packet.snapshot_id, arm, _status(a.status), a.error or a.status, n + 1)
+                                     for n, a in enumerate(response.attempts) if a.status != "proposed"]
+                if response.status == "proposed" and facts is not None:
+                    try:
+                        validate_proposal_citations(packet, snapshot, source, response.proposals)
+                        resolved, proof = resolve_packet_claims(packet, snapshot, source, [p.claim for p in response.proposals],
+                                                               facts=facts, model_proposal=f"{response.mode}:{request.arm}:proposal_only")
+                        if rows != [*expected_failures, *resolved] or evidence != proof:
+                            raise AuditError("paired_proof_mismatch", "model relation replaced code-owned finding or rows", 4)
+                    except AuditError as exc:
+                        if exc.reason == "paired_proof_mismatch":
+                            raise
+                        expected_failures.append(failure_row(packet.snapshot_id, arm, _status(exc.reason), exc.reason))
+                        if rows != expected_failures or evidence:
+                            raise AuditError("paired_proof_mismatch", "citation/invalid-output failure rows differ", 4) from exc
+                elif response.status != "proposed":
+                    expected_failures.append(failure_row(packet.snapshot_id, arm, _status(response.status), response.error or response.status))
+                    if rows != expected_failures or evidence:
+                        raise AuditError("paired_proof_mismatch", "provider failure rows were dropped", 4)
+            elif successes or info["attempts"] or info["simulated_usage"] or evidence:
+                raise AuditError("paired_attempt_integrity", "no response may not invent observations/findings", 4)
+            elif not rows:
+                raise AuditError("paired_row_integrity", "failed or held provider arm lost its denominator", 4)
+            if response is None and any(path.startswith(f"{arm}-budget/") for path in artifacts):
+                raise AuditError("paired_attempt_integrity", "ledger activity has no closed response", 4)
+        elif arm == "packet_candidate" and (successes or inventory is not None):
+            if inventory is None or facts is None:
+                raise AuditError("paired_artifact_integrity", "candidate findings need inventory and packet facts", 4)
+            expected, proof = resolve_packet_claims(packet, snapshot, source, inventory.claims, facts=facts)
+            expected.extend(failure_row(packet.snapshot_id, arm, _status(e.reason), e.reason, n)
+                            for n, e in enumerate(inventory.errors))
+            if rows != expected or evidence != proof:
+                raise AuditError("paired_proof_mismatch", "candidate findings/denominators differ", 4)
+        elif arm == "packet_grep" and (successes or info["status"] == "complete_source"):
+            baseline = run_packet_grep(packet, snapshot, source)
+            if rows != baseline.predictions or evidence != baseline.evidence:
+                raise AuditError("paired_proof_mismatch", "independent baseline differs", 4)
+        elif successes or evidence:
+            raise AuditError("paired_proof_mismatch", "failure-only arm has invented findings/evidence", 4)
+        elif not rows and info["status"] != "complete_source":
+            raise AuditError("paired_row_integrity", "failure-only arm lost its denominator", 4)
+    return dict(manifest=manifest, manifest_digest=digest, packet=packet, predictions=predictions, attempts=attempts)
+
+
+def score_paired(run_root: Path, snapshot_root: Path, gold_path: Path, out: Path,
+                 *, manifest_digest: str | None = None) -> dict[str, EvaluationResult]:
+    """Read labels only after verified inference closure; produce descriptive rows.
+
+    All gold must belong to this one snapshot and one unambiguous curator family.
+    Fake/replay results never certify live/human/comparative acceptance.
+    """
+    verified = verify_paired(run_root, snapshot_root, manifest_digest=manifest_digest)
+    # Hash the exact bytes scored, without a second read that could bind a
+    # replacement label file. This material is opened only after closure.
+    gold_raw = read_ordinary(gold_path.parent, gold_path.name, cap=10 * 1024 * 1024)
+    gold_lines = gold_raw.splitlines()
+    if len(gold_lines) > 5000 or any(not line.strip() for line in gold_lines):
+        raise AuditError("paired_gold_scope_mismatch", "gold must be bounded nonblank JSONL")
+    try:
+        gold = [GoldAtom.model_validate_json(line) for line in gold_lines]
+    except ValidationError as exc:
+        raise AuditError("paired_gold_scope_mismatch", "gold failed closed-schema validation") from exc
+    if not gold or any(row.claim.span.snapshot_id != verified["packet"].snapshot_id for row in gold):
+        raise AuditError("paired_gold_scope_mismatch", "score only this closed snapshot's complete gold family")
+    families = {row.family_id for row in gold}
+    if len(families) != 1:
+        raise AuditError("ambiguous_family", "snapshot must map to exactly one curator family")
+    family = next(iter(families))
+    source = load_snapshot(snapshot_root)
+    if source.manifest_digest != verified["packet"].snapshot_manifest_digest:
+        raise AuditError("paired_identity_mismatch", "source changed before label binding", 4)
+    for atom in gold:
+        if (atom.claim.span.path, atom.claim.span.file_sha256) != (
+                verified["packet"].readme_path, verified["packet"].readme_sha256):
+            raise AuditError("paired_gold_scope_mismatch", "gold atom is outside this packet README")
+        validate_span(source, snapshot_root, atom.claim.span)
+    if out.exists() or out.is_symlink():
+        raise AuditError("output_exists", "paired score output must be fresh")
+    if out.resolve() == run_root.resolve() or run_root.resolve() in out.resolve().parents:
+        raise AuditError("output_inside_paired_run", "scoring must preserve the closed inference directory")
+    if out.resolve() == snapshot_root.resolve() or snapshot_root.resolve() in out.resolve().parents:
+        raise AuditError("output_inside_snapshot", "scoring must preserve source snapshot bytes")
+    # Remap pipeline failures as well as findings. They remain in denominators.
+    results = {}
+    for arm, rows in verified["predictions"].items():
+        remapped = [row.model_copy(update={"family_id": family}) for row in rows]
+        result = score_rows(remapped, gold, include_intervals=False)
+        from claim_auditor.evaluation.measurements import summarize_attempts
+
+        results[arm] = result.model_copy(update={
+            "comparative_complete": False, "human_adjudicated": False,
+            "attempt_summary": summarize_attempts(verified["attempts"][arm]) if verified["attempts"][arm] else None,
+            "limitations": [*result.limitations, "Single-packet fake/replay scoring has no family interval, custody admission or measured live/human acceptance."],
+        })
+    out.mkdir(parents=True, exist_ok=False)
+    for arm, result in results.items():
+        arm_out = out / arm
+        arm_out.mkdir()
+        _write(arm_out / "RESULTS.json", result)
+        _write(arm_out / "items.json", result.items)
+    _write(out / "SCORED.json", dict(source_manifest_digest=verified["manifest_digest"],
+                                    gold_sha256=sha256(gold_raw), gold_atoms=len(gold), family_id=family,
+                                    arms=list(results), comparative_complete=False, human_adjudicated=False,
+                                    status="descriptive_fake_replay_only"))
+    return results

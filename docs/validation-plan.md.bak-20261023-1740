@@ -1,0 +1,69 @@
+# Deferred regression activation
+
+This suite is source construction. It has not been imported, collected or executed.
+Dirty Mode permits syntax parsing and focused source inspection only. No test result,
+runtime security result, benchmark score or product acceptance follows from these files.
+
+The tests use stdlib `unittest` and the application's existing dependencies. No optional
+test dependency is required. Inputs and scorer controls are agent-authored DEV examples,
+never human gold. Reports in integration tests are produced by the application only at
+future execution; no measured passing output is stored in fixtures.
+
+## Activation order
+
+After INT closes Dirty Mode and authorizes normal validation:
+
+1. Establish the supported Python 3.12 environment and reviewed dependency lock. Run the
+   core test modules first, including both successful citation reopening and refusal
+   controls. Tests must be discovered as the `tests` package so relative imports work.
+2. Run fake/replay producer and durable budget regressions. Inspect both attempt and
+   simulated-usage records. These tests make no live call and cannot meet the promoted
+   plan's actual live extraction/single-pass comparison obligation.
+3. Run the closed-report integration tests with actual parser resource enforcement.
+   Failure to establish enforced memory/time bounds is a setup failure; do not skip or
+   mock it into an integration pass. A completed report must reopen before tampering,
+   and each tamper must then fail integrity.
+4. Activate paired-run closure and ruling-history regressions after their published
+   interfaces are reconciled. Preserve failure rows, equal packet identities and
+   immutable annotation history. No annotation test constitutes a human action.
+5. Under normal independent review, add and execute the remaining hostile-input probes:
+   Git config/hooks/filter/alternates/replaces and corruption, parser hard limits and
+   import-shadow sentinels, file replacement races, symlink/junction refusal on Windows,
+   interrupted publication, malicious report/citation mutations and escaped UI inspection.
+   These require actual platform execution; the current unit seams do not prove them.
+
+Proposed invocation from the product repository, **not run during construction**:
+
+```powershell
+python -m unittest discover -s tests -t . -v
+```
+
+Source-layout imports require the application to be installed in that later environment
+or `src` to be on its import path. Environment installation is deferred, not a hidden
+test prerequisite completed by this package. No test runner configuration, CI workflow
+or dependency installation is added here.
+
+## Current regression boundaries
+
+| Source | Consequential invariant |
+|---|---|
+| `tests/test_integrity.py` | Changed source bytes and foreign snapshots fail integrity; a self-hashed negative certificate still needs query replay; absent/duplicate coverage is refused. |
+| `tests/test_policy.py` | Dynamic/incomplete scopes cannot accuse absence; a whole-value contradiction is missing; negation reverses presence/absence; runtime semantics and failed citations abstain. |
+| `tests/test_coordinates_report.py` | CRLF, non-BMP and combining bytes retain exact offsets; repeated inline alignment refuses ambiguity; hostile HTML, links, terminal controls and backticks stay inert. |
+| `tests/test_scoring_packet.py` | Invalid/duplicate rows cannot vanish; all-unknown/all-missing controls expose omissions and harm; failure rows stay in denominators; closed packet fields refuse labels. |
+| `tests/test_budget.py` | Pending, unknown or overrun liability blocks the next request across ledger reopen; settlement debits the shared remainder. |
+| `tests/test_providers.py` | Raw-packet extraction accepts newly proposed exact-span atoms; fake/replay identity, qualifiers, screening, evidence scope, retry budget and unknown settlement are enforced. |
+| `tests/test_closed_report.py` | Real future closed artifacts reopen before mutation; changed predictions or embedded source invalidate a previously complete report. |
+
+Every test has a short `what_bug_this_catches` explanation. `tests/support.py` supplies
+small typed inputs. Its synthetic scorer findings intentionally isolate scorer logic;
+their citation flags are not claimed as citation validation. The handcrafted `StaticIndex`
+inputs isolate policy/coverage replay and do not validate parser correctness.
+
+## Remaining acceptance
+
+No tests have run. Dependency resolution, cross-platform behavior, parser/Git isolation,
+snapshot→audit→report and tamper journeys, paired-arm orchestration, ruling persistence,
+actual human custody, locked/live comparisons, actual Action artifacts and independent
+nonauthoring product acceptance remain unverified. The promoted plan's corpus sizes,
+denominators and live-arm obligations are unchanged.

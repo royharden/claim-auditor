@@ -1,0 +1,183 @@
+# Typed provider source boundary
+
+Construction only: no provider or application execution has occurred. Default
+`live` remains refused with `live_not_authorized`. R02 adds dormant concrete HTTPS
+and provider-adapter source for later owner activation. No SDK, credential lookup
+or silent fallback exists. Real live extraction and single-pass comparison remain
+unmeasured and require separately authorized activation.
+
+The paired runner uses the single port
+`providers.produce(request, *, transport, ledger) -> ProviderResponse`.
+`ProviderRequest` requires `arm` (`extraction` or `single_pass`), `packet`,
+`input_digest=sha256(canonical_json(packet))`, `prompt_digest`, `model`,
+`policy_version` and `caps`. The packet's internal digest is independently checked.
+No extracted candidates, labels, adjudication rationale or human gold are request
+fields. Both treatments consume identical packet bytes; arm/prompt identities
+remain separately bound. Unknown/extra/omitted wire fields fail closed.
+
+`ProviderCaps` requires `total_input_tokens`, `total_output_tokens`, `total_seconds`,
+`total_cost_usd`, `request_input_tokens`, `request_output_tokens`, `request_seconds`,
+`request_cost_usd`, `max_logical_requests`, `max_retries`. Total ceilings cannot
+exceed 32k input, 8k output, 60 seconds; each physical attempt reserves its declared
+worst case, at most 30 seconds. Extraction admits at most two logical requests;
+single-pass admits one. Each admits at most one retry. These are declared fixture
+liabilities, not verified tokenization or actual provider costs. Future live
+admission must validate tokenizer/rates and disable hidden SDK retries.
+
+Construct a separate `BudgetLedger(root, BudgetState(...))` per treatment, with
+remaining values matching the total caps and `pending=None`,
+`unknown_settlement=False`. The initial state does not reset an existing ledger.
+The ledger pins packet, caps, model, mode and treatment, durably admits logical
+requests, and reserves before each transport attempt. Duplicate logical request
+digests cannot silently restart. Unknown settlement or overrun retains liability
+and blocks subsequent calls. Reconciliation must use the pending reservation ID;
+never delete a lock or budget file to recover. A crashed reserved attempt remains
+pending. Atomic replacement and fsynced attempt events are construction controls;
+race/crash/filesystem behavior is unverified.
+
+`FakeTransport(fixtures: list[ProviderFixture])` and
+`ReplayTransport(paths: list[Path])` require an explicitly supplied fixture for
+each attempt. No last-item reuse or fallback occurs. Replay files are bounded
+ordinary files. Every fixture requires `request_digest=request_digest(request)`,
+`proposals`, `simulated_usage`, `error` and `retryable`. A failed fixture carries
+no proposals; a successful fixture cannot request a retry. `simulated_usage` has
+required nullable input/output token, cost and elapsed fields; it drives fixture
+budget bookkeeping only. Unknown fixture usage blocks a following attempt.
+
+`ProviderProposal` requires `candidate_id`, `claim`, `relation`, `evidence_spans`.
+The historical field name `candidate_id` means the proposed Claim's source-derived
+ID, not an input candidate. New exact README spans are permitted. IDs follow the
+existing source convention: sentence ID from snapshot/path/start/end, then claim
+ID from parent/ordinal and predicate ID from claim/fields. Quote/UTF-8 offsets,
+digest and raw LF/CRLF/bare-CR display coordinates must agree. Providers reuse
+`inventory.raw.RawDocument.line_bounds` as the coordinate authority. Duplicate source atoms/IDs and
+clipped surrounding qualifiers fail closed. The bounded static grammar validates
+the proposed predicate from the quoted text, preserving negation, condition and
+qualifiers; unsupported semantic mappings must use the grammar's explicit unknown
+kind/uncertainty. This is conservative mapping, not measured semantic extraction.
+No pre-extracted inventory is supplied to either provider.
+
+Extraction proposals carry null relation and no code evidence. Single-pass has an
+explicit proposed relation, with evidence confined to admitted excerpt bytes.
+Full-file coordinate and citation reopening remains the sole citation resolver's
+job. Relations never decide four-way findings. No provider/packet absence proof
+exists. The consumer preserves all screened, invalid, incomplete or failed rows.
+
+Responses contain request digest, status, proposals, attempts, simulated usage,
+error, `mode=fake|replay`, and `comparative_complete=False`. Attempt mode is replay
+with provider `fake` or `replay`; token and latency observations are null. Attempt
+cost zero denotes only current external spend for inert replay, never a historic
+or estimated live cost. Simulated fixture observations are separately labeled and
+must not feed actual live cost/latency claims. A proposed response is not product,
+benchmark or runtime acceptance.
+
+The older `audit --mode replay` envelope remains a separate inventory-preserving
+legacy path. It neither implements nor replaces this raw-packet paired comparison.
+
+`paired-input --packet PATH --out NEW_FILE` authors a closed fake configuration
+with exact per-arm request identities. Both fixture outcomes are explicitly
+`fixture_not_supplied`, with null simulated usage and no proposed atoms. It is an
+operator input template, not synthetic successful inference, predictions or a
+measured result. `paired-run` preserves those failures. Real fixture proposals or
+explicit replay files must be independently supplied; editing request identities
+without updating the matching fixture is refused. Single-pass uses one logical
+request in its identity, matching the paired runner's declared baseline policy.
+
+## Dormant future-live source
+
+`providers.produce_live(request, *, system_prompt, adapter, ledger,
+authorization=None, transport=None)` refuses absent/disabled authorization before
+transport activity. `OpenAICompatibleAdapter` builds Chat Completions JSON;
+`AnthropicAdapter` builds Messages JSON. Neither performs I/O. Model identity and
+endpoint come from the owner, independently of packet text. System prompt bytes
+must match the request's prompt digest. Tool invocation is unavailable. Existing
+`audit --mode live` still refuses; no CLI flag bypasses admission.
+
+`LiveAuthorization` requires enabled state, owner/action identity, expiry, provider,
+exact HTTPS endpoint, full request/payload/snapshot digests, explicit allowed source
+paths, input-token upper bound, tokenizer and worst-case-cost receipts, request and
+response byte caps, and explicit nullable Anthropic version. Receipts are owner
+attestations; strings alone do not establish real consent, tokenization or pricing.
+Future operators must authorize the actual data scope, model, costs and transport.
+No price table or estimated settled cost is built in.
+
+`HTTPJSONTransport(*, authorization, allowed_endpoints, credential_headers,
+owner_activation=False)` performs no I/O in its constructor. Actual operation also
+requires explicit owner activation and a current exact endpoint/payload grant.
+Credentials must be injected by a future trusted caller; the source does not look
+up keys, files, accounts, proxies or environment values. Credential headers are
+never serialized into attempt records or errors. Only HTTPS with verified TLS is
+implemented; owner endpoints must use `/v1/chat/completions` or `/v1/messages`.
+There are no redirects, cookies, compression expansion or hidden retries.
+
+Each `post_json` owns a spawned trusted one-shot worker, bounds response bytes and
+the full wall deadline including DNS/TLS/header/body waits, and terminates only
+that worker on timeout. All socket/read work also uses the remaining deadline.
+No worker was spawned during construction. Run the future installed tool from a
+trusted directory with trusted Python import paths; target files are never modules.
+Windows spawn, cleanup, TLS/DNS, hostile responses and actual deadline enforcement
+remain unverified until authorized runtime activation.
+
+This additional trusted HTTP worker is an explicit design delta from the promoted
+plan's Git-acquisition/parser-worker process allowlist. Its future activation needs
+owner process/containment review; source authoring is not a no-execution proof or
+approval to exercise the new process. No target-controlled executable is selected.
+
+`JSONReply(endpoint, status_code, body, elapsed_seconds, physical_attempts,
+settled_cost_usd, cost_receipt)` is an internal immutable transport result.
+`StaticJSONTransport(*, authorization_id, replies)` is a separately labeled inert
+fixture source. A reply with another endpoint, more than one physical attempt,
+excess bytes or late elapsed time fails. Unknown actual usage/cost remains unknown;
+the real HTTP implementation cannot invent an invoice from token counts and
+therefore returns null monetary settlement. The pending ledger blocks another
+attempt until externally reconciled. No test fixture is a live observation.
+
+`LiveProposalPayload` contains closed `atoms` with start/end UTF-8 bytes, exact quote,
+kind, nullable relation and explicit evidence pointers. Models do not compute IDs,
+hashes or final findings. Code derives those identities and predicate fields,
+validates proposed kinds/qualifiers and reuses the same bounded span authority.
+Evidence is confined to packet excerpts, then reopened through the sole resolver
+by the inference consumer. Unsupported semantic mapping remains unknown/invalid.
+`LiveProviderResponse` retains attempts, usage provenance (`fixture` versus
+`provider_reported`), unknowns and `comparative_complete=False`.
+
+Both adapters accept only normal textual completion, reject tool-use/refusal/
+truncation and compare returned model identity exactly with the declared model.
+OpenAI-compatible usage retains missing prompt/completion counts; Anthropic input
+accounting requires explicit input/cache creation/cache read counts, preserving
+unknowns when omitted. HTTP/protocol errors never trigger a hidden fallback.
+A retry requires settled usage within the same shared ledger and explicit retry
+allowance. Default HTTP cost remains unknown, so automatic retry cannot occur on
+an unaccounted failure. Actual provider schema/model compatibility and rate/token
+receipts must be checked at activation.
+
+Late authorization/deadline, reservation, settlement or event-storage errors return
+a typed incomplete response retaining prior attempts and usage. A reserved attempt
+is retained before storage/send; known provider observations are never erased by
+a failed retry admission. The producer attempts a `live_source_response` event
+where storage permits. If that event cannot be persisted, the returned error marks
+`response_event_persistence_failed`; no durable receipt is claimed. Initial missing
+or disabled authorization still refuses before transport. These failure paths have
+been inspected statically, not exercised.
+
+`LiveExperimentConfig` is a nonsecret owner input with required caps, trusted system
+prompts, declared models, exact typed authorizations and endpoint allowlists for
+both extraction/single-pass roles. No credential fields, adapter import paths or
+target-selected endpoints are accepted. `providers.experiment.run_configured_live`
+defaults to refusal without explicit activation and externally injected credential
+headers. Its `LiveOwnerContext` is an opaque in-memory caller object, not a wire or
+environment setting. The CLI `live-experiment` branch checks that context and both
+role bindings before reading even config/protocol/target paths. Plain CLI invocation
+does not enable live execution. The factory forwards to D5's one pinned LOCK/packet/
+artifact engine; it does not duplicate accounting or human/custody admission.
+
+Official references consulted for source construction on 2026-10-23:
+[OpenAI Chat Completions](https://developers.openai.com/api/reference/cli/resources/chat/subresources/completions/methods/create)
+documents JSON-schema response format, completion caps and prompt/completion usage;
+[OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
+describes schema constraints/refusals. Local validation remains mandatory.
+[Anthropic Messages](https://platform.claude.com/docs/en/api/messages/create)
+documents model/messages/max_tokens and cache-aware usage;
+[Anthropic stop reasons](https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons)
+distinguishes completed turns from truncation, tool use and refusal. These docs are
+not proof any model or account has accepted the constructed requests.

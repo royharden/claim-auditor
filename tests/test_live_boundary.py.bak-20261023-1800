@@ -1,0 +1,41 @@
+"""Default-refusal probes only; no real authorization, credentials or transport calls."""
+
+from pathlib import Path
+from tempfile import TemporaryDirectory
+import unittest
+
+from claim_auditor.contracts import AuditError
+from claim_auditor.providers.http_json import HTTPJSONTransport
+from claim_auditor.providers.live import OpenAICompatibleAdapter, produce_live
+from claim_auditor.snapshot import read_source
+
+from .provider_support import ledger_for, request_for
+from .support import frozen_source, packet_for
+
+
+class DisabledLiveTests(unittest.TestCase):
+    def test_dormant_producer_refuses_before_budget_or_transport_activity(self):
+        """what_bug_this_catches: a default live producer executing without an owner authorization."""
+        class TrapTransport:
+            def post_json(self, **kwargs):
+                raise AssertionError("No transport may be called without authorization")
+
+        with TemporaryDirectory() as directory:
+            base = Path(directory)
+            snapshot, root = frozen_source(base)
+            request = request_for(packet_for(snapshot, read_source(snapshot, root, "README.md")))
+            with self.assertRaises(AuditError) as caught:
+                produce_live(request, system_prompt="not activated",
+                             adapter=OpenAICompatibleAdapter(),
+                             ledger=ledger_for(base / "budget", request),
+                             transport=TrapTransport())
+            self.assertEqual(caught.exception.reason, "live_not_authorized")
+            self.assertFalse((base / "budget").exists())
+
+    def test_http_constructor_without_owner_activation_refuses_first(self):
+        """what_bug_this_catches: constructing the dormant HTTP transport silently activating it."""
+        # No real grant or credential input exists; the default activation guard
+        # must reject before touching the missing authorization or doing any I/O.
+        with self.assertRaises(AuditError) as caught:
+            HTTPJSONTransport(authorization=None, allowed_endpoints=(), credential_headers={})
+        self.assertEqual(caught.exception.reason, "live_not_authorized")
