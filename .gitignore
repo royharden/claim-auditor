@@ -12,3 +12,13 @@ build/
 .thinking/
 results-local/
 *.bak-2026*-*
+
+# Local credentials and generated artifacts
+.creds/
+ArchiveManager-creds.txt
+*.pem
+*.key
+*.p12
+*.pfx
+node_modules/
+*.zip
